@@ -75,7 +75,7 @@ $('#saveButton').onclick=async()=>{if(!state.editable)return openPin();const val
 $('#cancelEdit').onclick=()=>{if(dirty&&!confirm('Отменить изменения этой записи?'))return;editId=null;editVersion=null;dirty=false;renderWorkout();};
 $('#sessionDate').oninput=persist;$('#notes').oninput=persist;$$('[data-view]').forEach(b=>b.onclick=()=>showView(b.dataset.view));$('#historyFilter').onchange=renderHistory;$('#exerciseSelect').onchange=drawChart;$('#metricSelect').onchange=drawChart;
 $('#exportButton').onclick=()=>{const blob=new Blob([JSON.stringify({schemaVersion:2,workouts:state.workouts,history:state.history},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='training-'+today()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-let timerLength=90,timerRemaining=90,timerEnd=0,timerInterval=null;function showTimer(){const seconds=timerEnd?Math.max(0,Math.ceil((timerEnd-Date.now())/1000)):timerRemaining;$('#timerDisplay').textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');if(timerEnd&&seconds===0){clearInterval(timerInterval);timerEnd=0;timerRemaining=timerLength;$('#timerButton').textContent='Ещё раз';toast('Отдых закончен. Можно к следующему подходу.');navigator.vibrate?.([180,100,180]);}}
+let timerLength=180,timerRemaining=180,timerEnd=0,timerInterval=null;function showTimer(){const seconds=timerEnd?Math.max(0,Math.ceil((timerEnd-Date.now())/1000)):timerRemaining;$('#timerDisplay').textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');if(timerEnd&&seconds===0){clearInterval(timerInterval);timerEnd=0;timerRemaining=timerLength;$('#timerButton').textContent='Ещё раз';toast('Отдых закончен. Можно к следующему подходу.');navigator.vibrate?.([180,100,180]);}}
 $('#timerButton').onclick=()=>{if(timerEnd){timerRemaining=Math.max(0,Math.ceil((timerEnd-Date.now())/1000));timerEnd=0;clearInterval(timerInterval);$('#timerButton').textContent='Продолжить';}else{timerEnd=Date.now()+timerRemaining*1000;timerInterval=setInterval(showTimer,250);$('#timerButton').textContent='Пауза';}showTimer();};$('#timerReset').onclick=()=>{timerEnd=0;clearInterval(timerInterval);timerRemaining=timerLength;$('#timerButton').textContent='Запустить таймер';showTimer();};$$('[data-seconds]').forEach(b=>b.onclick=()=>{timerLength=Number(b.dataset.seconds);$$('[data-seconds]').forEach(x=>x.classList.toggle('selected',x===b));$('#timerReset').click();});document.addEventListener('visibilitychange',()=>{if(!document.hidden)showTimer();});
 window.addEventListener('beforeunload',e=>{if(editId&&dirty){e.preventDefault();e.returnValue='';}});
 $('#headerDate').textContent=new Date().toLocaleDateString('ru-RU',{day:'numeric',month:'long'}).toUpperCase();
@@ -104,8 +104,17 @@ function renderSyncStatus(){
  const status=githubStore.status,pending=githubStore.pending.length;
  $('#syncMessage').textContent=status.message+(pending?' Ожидает отправки: '+pending+'.':'');
  $('#syncStatus').dataset.state=status.kind;
- $('#syncAction').textContent=!githubStore.connected?'Подключить':status.kind==='conflict'?'Разобрать':'Обновить';
- if($('#syncDetails'))$('#syncDetails').textContent=(githubStore.lastSynced?'Последняя синхронизация: '+new Date(githubStore.lastSynced).toLocaleString('ru-RU')+'. ':'')+(pending?'Ожидает отправки: '+pending+'.':'Все записи отправлены.');
+ const action=$('#syncAction');
+ const label=!githubStore.connected?'Подключить дневник':status.kind==='conflict'?'Разобрать изменения':'Обновить дневник';
+ action.setAttribute('aria-label',label);
+ action.title=label+'. '+status.message;
+ const syncing=action.disabled||status.kind==='syncing';
+ action.classList.toggle('is-syncing',syncing);
+ action.setAttribute('aria-busy',String(syncing));
+ const feedback=$('#syncFeedback');
+ feedback.hidden=!['offline','conflict'].includes(status.kind)&&!pending;
+ feedback.textContent=status.message+(pending?' Ожидает отправки: '+pending+'.':'');
+ if($('#syncDetails'))$('#syncDetails').textContent=(githubStore.lastSynced?'Последняя синхронизация: '+new Date(githubStore.lastSynced).toLocaleString('ru-RU')+'. ':'')+status.message+' '+(pending?'Ожидает отправки: '+pending+'.':'Все записи отправлены.');
 }
 function renderConflicts(){
  const host=$('#syncConflicts');host.replaceChildren();
@@ -124,7 +133,8 @@ function showSync(){
 function renderWorkoutForState(){if(dirty)return;if(editId){const current=state.history.find(s=>s.id===editId);if(current){editVersion=current.version;renderWorkout(current);}else{editId=null;editVersion=null;renderWorkout();}}else renderWorkout();}
 async function syncNow(){
  if(!githubStore.connected)return showSync();
- $('#syncError').textContent='';$('#syncAction').disabled=true;
+ if($('#syncAction').disabled)return;
+ $('#syncError').textContent='';$('#syncAction').disabled=true;renderSyncStatus();
  try{await githubStore.sync();await refresh();renderWorkoutForState();renderConflicts();}
  catch(e){$('#syncError').textContent=e.message;toast(e.message,true);}
  finally{$('#syncAction').disabled=false;renderSyncStatus();}

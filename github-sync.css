@@ -1,7 +1,3 @@
-.sync-status{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px;color:var(--muted)}
-.sync-status .text-button{flex:none;color:var(--lime);min-height:44px;padding:8px}
-.sync-status[data-state=synced]{color:#c4d6af}
-.sync-status[data-state=offline],.sync-status[data-state=conflict]{color:#f2cb83}
 .sync-dialog{width:560px;max-height:calc(100dvh - 40px);overflow-y:auto}
 .sync-dialog p{line-height:1.5}.sync-dialog label{font-size:14px;margin:18px 0}
 .sync-dialog input{display:block;width:100%;min-height:48px;margin-top:8px;padding:12px;background:#121612;border:1px solid #4e5d43;border-radius:8px;color:var(--text);font-size:16px}
@@ -12,4 +8,17 @@
 .sync-dialog .token-link{font-size:14px}.sync-dialog .sync-storage-note{font-size:13px}
 .sync-conflict{border-top:1px solid var(--line);padding-top:12px;margin-top:20px}
 #disconnectSync{display:block;margin:20px auto 0;min-height:44px}
-@media(max-width:650px){.sync-dialog{padding:28px 20px}.sync-dialog h2{font-size:25px}.sync-status{font-size:13px}.access{max-width:180px}.access .lock-icon{display:none}}
+@media(max-width:650px){.sync-dialog{padding:28px 20px}.sync-dialog h2{font-size:25px}.access{max-width:180px}.access .lock-icon{display:none}}
+
+.header-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.sync-refresh{display:grid;place-items:center;width:44px;height:44px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--lime);flex:none}
+.sync-refresh svg{display:block;width:23px;height:23px}
+.sync-refresh:hover{background:var(--panel2);border-color:#617345}
+.sync-refresh:disabled{opacity:.65;cursor:wait}
+.sync-refresh.is-syncing svg{animation:sync-rotate 1s linear infinite}
+.header-actions[data-state=offline] .sync-refresh,.header-actions[data-state=conflict] .sync-refresh{color:#f2cb83;border-color:#76603c}
+.sync-feedback{padding:10px 12px;margin:12px 0 0;border:1px solid #76603c;border-radius:10px;color:#f2cb83;font-size:14px;line-height:1.5}
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@keyframes sync-rotate{to{transform:rotate(360deg)}}
+@media(max-width:650px){header{height:auto;min-height:82px;padding:12px 0;gap:12px}.header-label{min-width:0;line-height:1.6}.header-actions{max-width:60%;gap:6px}.header-actions .access{min-width:0;max-width:calc(100% - 50px);padding:8px 10px;font-size:12px}.header-actions .sync-refresh{width:44px;height:44px}}
+@media(prefers-reduced-motion:reduce){.sync-refresh.is-syncing svg{animation:none}}
