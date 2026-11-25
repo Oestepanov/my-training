@@ -6,7 +6,7 @@ plugins {
 android {
  namespace = "ru.mytraining.app"
  compileSdk = 35
- defaultConfig { applicationId = "ru.mytraining.app"; minSdk = 26; targetSdk = 35; versionCode = 3; versionName = "3.0" }
+ defaultConfig { applicationId = "ru.mytraining.app"; minSdk = 26; targetSdk = 35; versionCode = 4; versionName = "4.0" }
  buildFeatures { compose = true }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
