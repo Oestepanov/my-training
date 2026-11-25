@@ -155,3 +155,14 @@ $('#copyConnection').onclick=async()=>{
 $('#disconnectSync').onclick=async()=>{try{await githubStore.disconnect();await refresh();renderWorkoutForState();$('#syncDialog').close();}catch(e){$('#syncError').textContent=e.message;}};
 window.addEventListener('online',updateFromAssistant);
 window.addEventListener('storage',e=>{if(e.key==='my-training-github-v1'&&!dirty){try{githubStore.load();refresh().then(renderWorkoutForState);}catch{}}});
+
+let assistantWindow=null;
+$('#connectAssistant').onclick=()=>{
+ if(!githubStore.connected)return toast('Сначала подключи дневник к GitHub.',true);
+ assistantWindow=window.open('https://ihoudini-training-diary.cuddlyhydrangea128.chatgpt.site/assistant-link','training-assistant-link');
+ if(!assistantWindow)toast('Разреши открытие окна подключения. Код можно скопировать кнопкой «Код для другого устройства».',true);
+};
+window.addEventListener('message',event=>{
+ if(event.origin!=='https://ihoudini-training-diary.cuddlyhydrangea128.chatgpt.site'||event.source!==assistantWindow||event.data?.type!=='training-assistant-request'||!githubStore.connected)return;
+ assistantWindow.postMessage({type:'training-assistant-credentials',code:githubStore.connectionCode()},event.origin);
+});
