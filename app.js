@@ -44,7 +44,12 @@ function persist(){dirty=true;if(!editId){try{localStorage.setItem(key(),JSON.st
 function savedDraft(){try{return JSON.parse(localStorage.getItem(key())||'null');}catch{return null;}}
 function switchWorkout(id){if(editId&&dirty&&!confirm('Выйти из редактирования без сохранения изменений?'))return;if(!editId&&dirty)persist();editId=null;editVersion=null;workoutId=id;dirty=false;renderPicker();renderWorkout();}
 function rowHTML(s,i){return '<div class="set-row '+(s.done?'done':'')+'"><span class="set-number">'+(i+1)+'</span><input aria-label="Вес в подходе '+(i+1)+'" class="weight" type="number" inputmode="decimal" min="0" max="1000" step="0.25" value="'+escape(s.weight)+'"><input aria-label="Повторы в подходе '+(i+1)+'" class="reps" type="number" inputmode="numeric" min="1" max="200" step="1" value="'+escape(s.reps)+'"><input aria-label="Подход '+(i+1)+' выполнен" class="done-check" type="checkbox" '+(s.done?'checked':'')+'></div>';}
-function renderWorkout(session){const workout=state.workouts.find(w=>w.id===workoutId);if(!workout)return;const draft=session||savedDraft();draftId=draft?.id||crypto.randomUUID();$('#sessionDate').value=draft?.date||today();$('#notes').value=draft?.notes||'';$('#workoutTitle').textContent='Упражнения';$('#workoutCount').textContent=workout.exercises.length+' в программе';$('#editBanner').hidden=!editId;$('#cancelEdit').hidden=!editId;$('#editBanner').textContent=editId?'Редактирование занятия от '+date(session.date):'';
+function renderWorkout(session){
+if(!session&&!editId){
+  const candidates=state.history.filter(s=>s.workoutId===workoutId&&s.date===today()&&s.exercises.some(e=>!e.completed));
+  if(candidates.length===1){session=candidates[0];editId=session.id;editVersion=session.version;}
+}
+const workout=state.workouts.find(w=>w.id===workoutId);if(!workout)return;const draft=session||savedDraft();draftId=draft?.id||crypto.randomUUID();$('#sessionDate').value=draft?.date||today();$('#notes').value=draft?.notes||'';$('#workoutTitle').textContent='Упражнения';$('#workoutCount').textContent=workout.exercises.length+' в программе';$('#editBanner').hidden=!editId;$('#cancelEdit').hidden=!editId;$('#editBanner').textContent=editId?'Редактирование занятия от '+date(session.date):'';
 $('#exerciseList').innerHTML=workout.exercises.map((ex,i)=>{const prev=latest(ex.id);const saved=draft?.exercises?.find(e=>e.exerciseId===ex.id);const rows=saved?sets(saved):sets(prev).map(s=>({...s,done:false}));const prevDone=prev?doneSets(prev):[];const previous=prevDone.length?number(prevDone[0].weight)+' кг · '+prevDone.map(s=>s.reps).join(' / ')+' повт.':'Нет прошлых записей';return '<article class="exercise" data-exercise="'+escape(ex.id)+'"><div class="exercise-head"><span class="exercise-number">'+String(i+1).padStart(2,'0')+'</span><div class="exercise-title"><h3>'+escape(ex.name)+'</h3><p class="muscles">'+escape(muscles[ex.id]||'')+'</p></div></div><div class="previous">В прошлый раз: <b>'+escape(previous)+'</b>'+(prev?' <span>· '+escape(date(prev.date).replace(' 2026 г.',''))+'</span>':'')+'</div><div class="set-head"><span>Подход</span><span>'+(ex.id==='assisted-pull-up'?'Помощь, кг':'Вес, кг')+'</span><span>Повторы</span><span>Готово</span></div><div class="set-rows">'+rows.map(rowHTML).join('')+'</div><div class="set-actions"><button type="button" class="text-button add-set">+ Подход</button><button type="button" class="text-button remove-set">Убрать последний</button></div>'+(hints[ex.id]?'<p class="muted hint">'+escape(hints[ex.id])+'</p>':'')+'</article>';}).join('');
 $$('.exercise').forEach(card=>{card.addEventListener('input',persist);card.querySelector('.add-set').onclick=()=>{const rows=card.querySelectorAll('.set-row');if(rows.length>=12)return;const last=rows[rows.length-1];card.querySelector('.set-rows').insertAdjacentHTML('beforeend',rowHTML({weight:Number(last.querySelector('.weight').value),reps:Number(last.querySelector('.reps').value),done:false},rows.length));persist();updateAccess();};card.querySelector('.remove-set').onclick=()=>{const rows=card.querySelectorAll('.set-row');if(rows.length>1){rows[rows.length-1].remove();persist();}};});updateCompletion();updateAccess();}
 function updateCompletion(){const rows=$$('.set-row'),done=rows.filter(r=>r.querySelector('.done-check').checked).length;$('#doneCount').textContent=done;$('#totalCount').textContent='/ '+rows.length;$('#completionBar').style.width=(rows.length?done/rows.length*100:0)+'%';$('#completionLabel').textContent=done===rows.length&&done?'Все подходы выполнены':done?'Осталось '+(rows.length-done)+' подходов':'Можно начинать';rows.forEach(r=>r.classList.toggle('done',r.querySelector('.done-check').checked));$$('.exercise').forEach(c=>c.classList.toggle('all-done',[...c.querySelectorAll('.done-check')].every(e=>e.checked)));}
@@ -107,3 +112,17 @@ async function loadDevices(){
   }catch(e){$('#devicesList').textContent=e.message;}
 }
 (async()=>{try{await refresh();renderWorkout();$('#loadState').hidden=true;$('#content').hidden=false;}catch(e){$('#loadState').textContent=e.message+' ';const b=document.createElement('button');b.textContent='Повторить';b.className='button secondary';b.onclick=()=>location.reload();$('#loadState').append(b);}})();
+
+// Refresh externally recorded results without discarding anything being typed.
+let remoteRefreshRunning=false;
+async function updateFromAssistant(){
+ if(document.hidden||dirty||remoteRefreshRunning||!$('#content')||$('#content').hidden||$('#pinDialog').open||$('#devicesDialog').open)return;
+ remoteRefreshRunning=true;
+ try{
+  await refresh();
+  if(editId){const current=state.history.find(s=>s.id===editId);if(current){editVersion=current.version;renderWorkout(current);}else{editId=null;editVersion=null;renderWorkout();}}
+  else renderWorkout();
+ }catch{}finally{remoteRefreshRunning=false;}
+}
+setInterval(updateFromAssistant,15000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateFromAssistant();});

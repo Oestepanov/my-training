@@ -156,3 +156,4 @@ export async function api(request,env) {
   response.headers.set('X-Content-Type-Options','nosniff');
   return response;
 }
+export const trainingServices={data,seed,validateSession};
