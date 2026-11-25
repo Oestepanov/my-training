@@ -42,79 +42,74 @@ private data class SetRow(val weight:String="0",val reps:String="12",val done:Bo
 private data class Exercise(val id:String,val name:String,val previous:String,val rows:List<SetRow>)
 class MainActivity:ComponentActivity(){
  private val prefs by lazy{getSharedPreferences("training",MODE_PRIVATE)}
- private lateinit var browser:WebView
- private val site="https://oestepanov.github.io/my-training/"
- private val apiOrigin="https://ihoudini-training-diary.cuddlyhydrangea128.chatgpt.site"
- private var pageReady=false
- private var pageError=""
- private fun trusted(url:String?):Boolean{
-  val u=Uri.parse(url?:"")
-  return u.scheme=="https"&&u.host=="oestepanov.github.io"&&(u.port==-1||u.port==443)&&(u.path=="/my-training/"||u.path=="/my-training/index.html")
+ private val endpoint="https://api.github.com/repos/Oestepanov/my-training-data/contents/data/training.json"
+ private fun key():javax.crypto.SecretKey{
+  val ks=java.security.KeyStore.getInstance("AndroidKeyStore").apply{load(null)}
+  val existing=ks.getKey("training-github",null) as? javax.crypto.SecretKey
+  if(existing!=null)return existing
+  val gen=javax.crypto.KeyGenerator.getInstance("AES","AndroidKeyStore")
+  gen.init(android.security.keystore.KeyGenParameterSpec.Builder("training-github",android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT).setBlockModes("GCM").setEncryptionPaddings("NoPadding").build())
+  return gen.generateKey()
  }
- private suspend fun js(script:String):String?=suspendCancellableCoroutine{c->
-  if(!trusted(browser.url)){c.resume(null);return@suspendCancellableCoroutine}
-  browser.evaluateJavascript(script){raw->
-   if(c.isActive)c.resume(runCatching{JSONTokener(raw?:"null").nextValue() as? String}.getOrNull())
-  }
+ private fun storeToken(value:String){
+  val c=javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+  c.init(javax.crypto.Cipher.ENCRYPT_MODE,key())
+  prefs.edit().putString("gh_token",android.util.Base64.encodeToString(c.iv+c.doFinal(value.toByteArray()),android.util.Base64.NO_WRAP)).apply()
  }
- private suspend fun api(path:String,body:JSONObject?=null):JSONObject=withContext(Dispatchers.Main){
-  withTimeout(30000){
-   while(!pageReady){if(pageError.isNotBlank())throw IllegalStateException(pageError);delay(200)}
-   if(!trusted(browser.url))throw IllegalStateException("Страница подключения недоступна")
-   val id="r"+UUID.randomUUID().toString().replace("-","")
-   val url=JSONObject.quote(apiOrigin+path)
-   val payload=body?.let{JSONObject.quote(it.toString())}?:"null"
-   val script="""
-    (function(){
-      window.__nativeRequests=window.__nativeRequests||{};
-      var id='$id', body=$payload, headers={'Accept':'application/json'};
-      try {
-       var raw=localStorage.getItem('my-training-cloudflare-device-v1')||sessionStorage.getItem('my-training-cloudflare-device-v1');
-       var d=JSON.parse(raw||'null');
-       if(d&&d.expires>Date.now()&&/^[a-f0-9]{64}$/.test(d.token))headers.Authorization='Bearer '+d.token;
-      }catch(e){}
-      if(body!==null)headers['Content-Type']='application/json';
-      var controller=new AbortController(), timer=setTimeout(function(){controller.abort()},12000);
-      fetch($url,{method:body===null?'GET':'POST',headers:headers,body:body,credentials:'omit',cache:'no-store',redirect:'error',signal:controller.signal})
-      .then(async function(r){var v;try{v=await r.json()}catch(e){throw Error('Сервер вернул не JSON (HTTP '+r.status+')')};window.__nativeRequests[id]=JSON.stringify({status:r.status,value:v})})
-      .catch(function(e){window.__nativeRequests[id]=JSON.stringify({error:e.name==='AbortError'?'Сервер не ответил за 12 секунд':String(e.message||e)})})
-      .finally(function(){clearTimeout(timer)});
-      return 'started';
-    })()
-   """.trimIndent()
-   if(js(script)!="started")throw IllegalStateException("Не удалось начать запрос через браузер")
-   try{
-    var raw:String?=null
-    while(raw==null){delay(250);raw=js("window.__nativeRequests && window.__nativeRequests['"+id+"'] || null")}
-    val result=JSONObject(raw)
-    if(result.has("error"))throw IllegalStateException(result.optString("error"))
-    val value=result.optJSONObject("value")?:throw IllegalStateException("Некорректный ответ сервера")
-    if(result.optInt("status") !in 200..299)throw IllegalStateException(value.optString("error","Ошибка HTTP "+result.optInt("status")))
-    value
-   }finally{js("if(window.__nativeRequests)delete window.__nativeRequests['"+id+"']; 'done'")}
+ private fun token():String=runCatching{
+  val raw=android.util.Base64.decode(prefs.getString("gh_token",""),android.util.Base64.DEFAULT)
+  val c=javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+  c.init(javax.crypto.Cipher.DECRYPT_MODE,key(),javax.crypto.spec.GCMParameterSpec(128,raw.copyOfRange(0,12)))
+  String(c.doFinal(raw.copyOfRange(12,raw.size)),Charsets.UTF_8)
+ }.getOrDefault("")
+ private suspend fun github(secret:String,body:JSONObject?=null):JSONObject=withContext(Dispatchers.IO){
+  require(secret.isNotBlank()){"Сначала подключи GitHub"}
+  val c=URL(endpoint).openConnection() as HttpURLConnection
+  try{
+   c.connectTimeout=12000;c.readTimeout=12000;c.instanceFollowRedirects=false
+   c.setRequestProperty("Authorization","Bearer "+secret)
+   c.setRequestProperty("Accept","application/vnd.github+json")
+   c.setRequestProperty("X-GitHub-Api-Version","2022-11-28")
+   if(body!=null){c.requestMethod="PUT";c.doOutput=true;c.setRequestProperty("Content-Type","application/json");c.outputStream.use{it.write(body.toString().toByteArray(Charsets.UTF_8))}}
+   val status=c.responseCode
+   val raw=(if(status in 200..299)c.inputStream else c.errorStream)?.bufferedReader()?.use{it.readText()}?:"{}"
+   if(status !in 200..299)throw IllegalStateException("GitHub HTTP "+status+if(status==404||status==403)" — проверь доступ токена к репозиторию" else "")
+   JSONObject(raw)
+  }finally{c.disconnect()}
+ }
+ private fun normalize(d:JSONObject):JSONObject{
+  d.arr("history").objects().forEach{s->s.arr("exercises").objects().forEach{e->
+   if(!e.has("setDetails"))e.put("setDetails",JSONArray().apply{repeat(e.optInt("sets",3).coerceIn(1,12)){put(JSONObject().put("weight",e.optDouble("weight",0.0)).put("reps",e.optInt("reps",12)).put("done",e.optBoolean("completed")) )}})
+  }}
+  return d
+ }
+ private fun local():JSONObject=normalize(runCatching{JSONObject(prefs.getString("local_v4","")?:"")}.getOrElse{JSONObject(assets.open("programs.json").bufferedReader().use{it.readText()})})
+ private fun persist(d:JSONObject){check(prefs.edit().putString("local_v4",d.toString()).commit()){"Не удалось сохранить данные на телефон"}}
+ private fun merge(remote:JSONObject,local:JSONObject):JSONObject{
+  val records=linkedMapOf<String,JSONObject>()
+  remote.arr("history").objects().forEach{records[it.getString("id")]=it}
+  local.arr("history").objects().forEach{if(!records.containsKey(it.getString("id")))records[it.getString("id")]=it}
+  return normalize(JSONObject(remote.toString()).put("history",JSONArray(records.values.sortedByDescending{it.optString("date")+it.optString("createdAt")})))
+ }
+ private suspend fun sync(secret:String,local:JSONObject):JSONObject{
+  val file=github(secret)
+  val remote=normalize(JSONObject(String(android.util.Base64.decode(file.getString("content"),android.util.Base64.DEFAULT),Charsets.UTF_8)))
+  require(remote.arr("workouts").length()>0){"В GitHub отсутствует программа тренировок"}
+  val merged=merge(remote,local)
+  val remoteIds=remote.arr("history").objects().map{it.getString("id")}.toSet()
+  if(merged.arr("history").objects().any{it.getString("id") !in remoteIds}){
+   github(secret,JSONObject().put("message","Sync Android training sessions").put("sha",file.getString("sha")).put("content",android.util.Base64.encodeToString(merged.toString(2).toByteArray(Charsets.UTF_8),android.util.Base64.NO_WRAP)))
   }
+  return merged
  }
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
-  browser=WebView(this).apply{
-   settings.javaScriptEnabled=true
-   settings.domStorageEnabled=true
-   settings.allowFileAccess=false
-   settings.allowContentAccess=false
-   webViewClient=object:WebViewClient(){
-    override fun shouldOverrideUrlLoading(view:WebView,request:WebResourceRequest):Boolean = request.isForMainFrame&&!trusted(request.url.toString())
-    override fun onPageStarted(view:WebView,url:String?,favicon:android.graphics.Bitmap?){pageReady=false;pageError=""}
-    override fun onPageFinished(view:WebView,url:String?){pageReady=trusted(url)&&pageError.isBlank()}
-    override fun onReceivedError(view:WebView,request:WebResourceRequest,error:WebResourceError){if(request.isForMainFrame){pageError="Не открывается сайт: "+error.description;pageReady=false}}
-   }
-   loadUrl(site)
-  }
   setContent{MaterialTheme(colorScheme=darkColorScheme(primary=lime,onPrimary=bg,background=bg,surface=surface,secondaryContainer=Color(0xFF36472B),onSecondaryContainer=lime,surfaceVariant=Color(0xFF303830),onSurfaceVariant=Color(0xFFC1CABE))){Screen()}}
  }
  @Composable private fun Screen(){
   val scope=rememberCoroutineScope()
-  var data by remember{mutableStateOf(JSONObject())}
-  var editable by remember{mutableStateOf(false)}
+  var data by remember{mutableStateOf(local())}
+  val editable=true
   var busy by remember{mutableStateOf(false)}
   var message by remember{mutableStateOf("")}
   var tab by remember{mutableIntStateOf(0)}
@@ -125,6 +120,8 @@ class MainActivity:ComponentActivity(){
   var sessionId by remember{mutableStateOf(UUID.randomUUID().toString())}
   var version by remember{mutableStateOf<Any>(JSONObject.NULL)}
   var pairing by remember{mutableStateOf(false)}
+  var secret by remember{mutableStateOf("")}
+  var connected by remember{mutableStateOf(token().isNotBlank())}
   var selected by remember{mutableStateOf("")}
   var seconds by remember{mutableIntStateOf(90)}
   var running by remember{mutableStateOf(false)}
@@ -137,7 +134,7 @@ class MainActivity:ComponentActivity(){
    val program=data.arr("workouts").objects().firstOrNull{it.optString("id")==w}
    val saved=runCatching{JSONObject(prefs.getString("draft_"+w,"")?:"")}.getOrNull()
    val partial=history.filter{it.optString("workoutId")==w&&it.optString("date")==LocalDate.now().toString()&&it.arr("exercises").objects().any{e->!e.optBoolean("completed")}}.singleOrNull()
-   val source=saved?:partial
+   val source=saved
    sessionId=source?.optString("id")?:UUID.randomUUID().toString()
    version=source?.opt("version")?:JSONObject.NULL
    date=source?.optString("date")?:LocalDate.now().toString()
@@ -152,24 +149,21 @@ class MainActivity:ComponentActivity(){
    }.orEmpty()
   }
   suspend fun refresh(reset:Boolean){
-   val incoming=api("/api/data");require(incoming.arr("workouts").length()>0){"Сервер не вернул программу тренировок"};data=incoming;editable=data.optBoolean("editable");prefs.edit().putString("cache",data.toString()).apply()
-   if(reset)load(workout)
+   data=sync(token(),data);persist(data);if(reset)load(workout)
   }
   fun task(block:suspend ()->Unit){if(busy)return;busy=true;message="";scope.launch{try{block()}catch(e:Exception){message=e.message?:"Ошибка соединения"}finally{busy=false}}}
   LaunchedEffect(Unit){
-   val cache=prefs.getString("cache",null)
-   if(cache!=null){runCatching{data=JSONObject(cache);load(workout)}}
-   busy=true
-   try{refresh(true);prefs.edit().putString("cache",data.toString()).apply()}catch(e:Exception){message="Нет соединения. "+(e.message?:"")}finally{busy=false}
+   load(workout)
+   if(connected)task{refresh(false);if(prefs.getString("draft_"+workout,null)==null)load(workout)}
   }
   LaunchedEffect(running){while(running&&seconds>0){delay(1000);seconds--};if(seconds==0)running=false}
   Box(Modifier.fillMaxSize()){
   Scaffold(containerColor=bg,bottomBar={NavigationBar(containerColor=surface,modifier=Modifier.height(88.dp)){listOf("Тренировка","История","Прогресс").forEachIndexed{i,t->NavigationBarItem(selected=tab==i,onClick={tab=i},icon={MenuIcon(i,if(tab==i)lime else Color(0xFFB9C2B7))},label={Text(t,fontSize=14.sp)},colors=NavigationBarItemDefaults.colors(indicatorColor=Color(0xFF36472B),selectedTextColor=lime,unselectedTextColor=Color(0xFFB9C2B7)))}}}){padding->
    LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal=16.dp),verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(top=16.dp,bottom=20.dp)){
-    item{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("МОИ ТРЕНИРОВКИ",color=lime,style=MaterialTheme.typography.titleMedium);TextButton(onClick={if(editable)task{refresh(false)}else{pairing=true;if(!pageReady)browser.reload()}}){Text(if(editable)"Обновить" else "Подключить")}}}
-    if(busy)item{Text("Загрузка тренировок…");LinearProgressIndicator(Modifier.fillMaxWidth())}
-    if(!busy&&data.arr("workouts").length()==0)item{Text("Тренировки пока не загружены");Button(onClick={pageReady=false;pageError="";browser.reload();task{refresh(true)}}){Text("Повторить подключение")}}
-    if(message.isNotBlank())item{Text(message,color=lime);TextButton(onClick={task{refresh(true);prefs.edit().putString("cache",data.toString()).apply()}}){Text("Обновить")}}
+    item{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("МОИ ТРЕНИРОВКИ",color=lime,style=MaterialTheme.typography.titleMedium);TextButton(onClick={secret="";pairing=true}){Text(if(connected)"GitHub ✓" else "GitHub")}}}
+    if(busy)item{Text("Синхронизация GitHub…");LinearProgressIndicator(Modifier.fillMaxWidth())}
+    if(!connected)item{Text("Автономный режим · результаты сохраняются на телефоне",color=lime)}
+    if(message.isNotBlank())item{Text(message,color=lime);TextButton(onClick={task{refresh(false)}}){Text("Обновить")}}
     when(tab){
      0->{
       item{Text("Твоя тренировка.",style=MaterialTheme.typography.headlineMedium);Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("1","2","3").forEach{w->FilterChip(selected=workout==w,onClick={if(editable&&exercises.isNotEmpty())draft();workout=w;load(w)},label={Text("№ "+w)})}}
@@ -187,7 +181,17 @@ class MainActivity:ComponentActivity(){
       item{OutlinedTextField(date,{date=it;draft()},enabled=editable,label={Text("Дата (ГГГГ-ММ-ДД)")},modifier=Modifier.fillMaxWidth());OutlinedTextField(notes,{notes=it;draft()},enabled=editable,label={Text("Заметка")},modifier=Modifier.fillMaxWidth());Button(modifier=Modifier.fillMaxWidth(),enabled=editable&&!busy&&exercises.any{e->e.rows.any{it.done}},onClick={task{
        require(runCatching{LocalDate.parse(date)}.isSuccess){"Проверь дату"}
        require(exercises.all{e->e.rows.all{r->(r.weight.replace(',','.').toDoubleOrNull()?:-1.0) in 0.0..1000.0&&(r.reps.toIntOrNull()?:0) in 1..200}}){"Проверь вес и повторения"}
-       api("/api/session",payload());prefs.edit().remove("draft_"+workout).apply();refresh(true);prefs.edit().putString("cache",data.toString()).apply();message="Тренировка сохранена"
+       val entry=payload().put("createdAt",java.time.Instant.now().toString())
+       entry.remove("version")
+       entry.arr("exercises").objects().forEach{e->
+        val id=e.optString("exerciseId");e.put("name",exercises.first{it.id==id}.name)
+        val rows=e.arr("setDetails").objects();val done=rows.filter{it.optBoolean("done")}
+        e.put("completed",done.isNotEmpty());e.put("sets",rows.size);e.put("weight",done.firstOrNull()?.optDouble("weight")?:0.0);e.put("reps",done.firstOrNull()?.optInt("reps")?:0)
+       }
+       val history=data.arr("history").objects().filter{it.optString("id")!=entry.optString("id")}
+       data=JSONObject(data.toString()).put("history",JSONArray(listOf(entry)+history))
+       persist(data);prefs.edit().remove("draft_"+workout).commit();load(workout);message="Сохранено на телефоне"
+       if(connected){try{refresh(true);message="Сохранено и синхронизировано"}catch(e:Exception){message="Сохранено на телефоне. GitHub: "+e.message}}
       }}){Text("Сохранить тренировку")};if(!editable)Text("Для записи один раз подтверди устройство на сайте.")}
      }
      1->{item{Text("История.",style=MaterialTheme.typography.headlineMedium)}
@@ -204,26 +208,15 @@ class MainActivity:ComponentActivity(){
     }
    }
   }
-  if(pairing){
-   Surface(Modifier.fillMaxSize(),color=bg){
-    Column(Modifier.fillMaxSize().systemBarsPadding()){
-     Text("Подключение устройства",style=MaterialTheme.typography.titleLarge,modifier=Modifier.padding(16.dp))
-     Text("На сайте открой редактирование и оставь включённым запоминание устройства. Затем нажми «Готово».",modifier=Modifier.padding(horizontal=16.dp))
-     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceEvenly){
-      TextButton(onClick={pairing=false}){Text("Назад")}
-      TextButton(onClick={pageReady=false;pageError="";browser.reload()}){Text("Обновить сайт")}
-      TextButton(enabled=!busy,onClick={task{refresh(exercises.isEmpty());require(editable){"Сайт ещё не подтвердил устройство"};pairing=false}}){Text("Готово")}
-     }
-     if(message.isNotBlank())Text(message,color=lime,modifier=Modifier.padding(12.dp))
-     Box(Modifier.weight(1f).fillMaxWidth()){}
-    }
-   }
-  }
-  // Keep one browser instance attached, with no native JavaScript bridge.
-  AndroidView(factory={browser},modifier=if(pairing) Modifier.fillMaxWidth().fillMaxHeight(.77f).align(Alignment.BottomCenter).navigationBarsPadding() else Modifier.size(1.dp).align(Alignment.BottomEnd))
+  if(pairing)AlertDialog(onDismissRequest={if(!busy)pairing=false},title={Text("Подключение GitHub")},text={Column(verticalArrangement=Arrangement.spacedBy(10.dp)){
+    Text("Токен с доступом Contents: Read and write только к my-training-data. Он хранится зашифрованным на телефоне.")
+    OutlinedTextField(secret,{secret=it},label={Text("Токен GitHub")},visualTransformation=PasswordVisualTransformation(),singleLine=true)
+    if(connected)TextButton(enabled=!busy,onClick={pairing=false;task{refresh(false);message="Синхронизировано"}}){Text("Синхронизировать")}
+    if(connected)TextButton(enabled=!busy,onClick={prefs.edit().remove("gh_token").apply();connected=false;pairing=false}){Text("Отключить GitHub")}
+    if(message.isNotBlank())Text(message,color=lime)
+   }},confirmButton={TextButton(enabled=secret.isNotBlank()&&!busy,onClick={task{val merged=sync(secret.trim(),data);persist(merged);storeToken(secret.trim());data=merged;connected=true;secret="";pairing=false;if(prefs.getString("draft_"+workout,null)==null)load(workout);message="GitHub подключён"}}){Text("Подключить")}},dismissButton={TextButton(enabled=!busy,onClick={pairing=false;secret=""}){Text("Закрыть")}})
   }
  }
- override fun onDestroy(){browser.destroy();super.onDestroy()}
 }
 @Composable private fun MenuIcon(index:Int,color:Color){
  Canvas(Modifier.size(28.dp)){
