@@ -1,359 +1,109 @@
-(function () {
-  "use strict";
-
-  const DATA_PATH = "data/training.json";
-  const DRAFT_KEY = "my-training-draft-v1";
-  const apiBase = "https://api.github.com";
-  let token = "";
-  let owner = "";
-  let repository = "my-training-data";
-  let fileSha = "";
-  let data = TrainingCore.normalizeData(null);
-  let currentWorkoutId = "1";
-
-  const $ = (selector) => document.querySelector(selector);
-  const $$ = (selector) => Array.from(document.querySelectorAll(selector));
-  const els = {
-    app: $("#app"),
-    appMessage: $("#appMessage"),
-    completionBar: $("#completionBar"),
-    connectionButton: $("#connectionButton"),
-    connectionForm: $("#connectionForm"),
-    connectionLabel: $("#connectionLabel"),
-    connectionMessage: $("#connectionMessage"),
-    connectionPanel: $("#connectionPanel"),
-    exerciseList: $("#exerciseList"),
-    exerciseSelect: $("#exerciseSelect"),
-    historyList: $("#historyList"),
-    repoInput: $("#repoInput"),
-    remainingLabel: $("#remainingLabel"),
-    saveButton: $("#saveButton"),
-    sessionDate: $("#sessionDate"),
-    tokenInput: $("#tokenInput"),
-    workoutSelect: $("#workoutSelect"),
-    workoutForm: $("#workoutForm"),
-    workoutTitle: $("#workoutTitle"),
-  };
-
-  function message(element, text, type = "") {
-    element.textContent = text;
-    element.className = `message ${type}`.trim();
-  }
-
-  function headers() {
-    return {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-    };
-  }
-
-  async function request(url, options = {}) {
-    const response = await fetch(url, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      const error = new Error(payload.message || `GitHub вернул ошибку ${response.status}`);
-      error.status = response.status;
-      throw error;
-    }
-    return response.status === 204 ? null : response.json();
-  }
-
-  function decodeBase64Utf8(value) {
-    const bytes = Uint8Array.from(atob(value.replace(/\n/g, "")), (char) => char.charCodeAt(0));
-    return new TextDecoder().decode(bytes);
-  }
-
-  function encodeBase64Utf8(value) {
-    const bytes = new TextEncoder().encode(value);
-    let binary = "";
-    bytes.forEach((byte) => (binary += String.fromCharCode(byte)));
-    return btoa(binary);
-  }
-
-  async function loadRemoteData() {
-    const encodedPath = DATA_PATH.split("/").map(encodeURIComponent).join("/");
-    const payload = await request(`${apiBase}/repos/${owner}/${repository}/contents/${encodedPath}`);
-    fileSha = payload.sha;
-    return TrainingCore.normalizeData(JSON.parse(decodeBase64Utf8(payload.content)));
-  }
-
-  async function saveRemoteData(nextData, sha) {
-    const encodedPath = DATA_PATH.split("/").map(encodeURIComponent).join("/");
-    const payload = await request(`${apiBase}/repos/${owner}/${repository}/contents/${encodedPath}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: `Сохранить тренировку ${new Date().toISOString().slice(0, 10)}`,
-        content: encodeBase64Utf8(`${JSON.stringify(nextData, null, 2)}\n`),
-        sha,
-      }),
-    });
-    fileSha = payload.content.sha;
-  }
-
-  function today() {
-    const date = new Date();
-    const offset = date.getTimezoneOffset();
-    return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 10);
-  }
-
-  function getWorkout() {
-    return data.workouts.find((item) => String(item.id) === String(currentWorkoutId));
-  }
-
-  function loadDraft() {
-    try {
-      const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
-      return draft?.workoutId === currentWorkoutId ? draft : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  function collectDraft() {
-    return {
-      workoutId: currentWorkoutId,
-      date: els.sessionDate.value,
-      exercises: $$(".exercise-card").map((card) => ({
-        exerciseId: card.dataset.exerciseId,
-        name: card.dataset.exerciseName,
-        weight: Number(card.querySelector(".weight-input").value) || 0,
-        sets: Number(card.querySelector(".sets-input").value) || 0,
-        reps: Number(card.querySelector(".reps-input").value) || 0,
-        completed: card.querySelector(".done-input").checked,
-      })),
-    };
-  }
-
-  function persistDraft() {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(collectDraft()));
-    updateCompletion();
-  }
-
-  function updateCompletion() {
-    const checks = $$(".done-input");
-    const done = checks.filter((item) => item.checked).length;
-    const remaining = checks.length - done;
-    els.remainingLabel.textContent = `Осталось: ${remaining} из ${checks.length}`;
-    els.completionBar.style.width = checks.length ? `${(done / checks.length) * 100}%` : "0%";
-    $$(".exercise-card").forEach((card) => card.classList.toggle("completed", card.querySelector(".done-input").checked));
-  }
-
-  function renderWorkout() {
-    const workout = getWorkout();
-    if (!workout) return;
-    els.workoutTitle.textContent = workout.name || `Тренировка №${workout.id}`;
-    const latest = TrainingCore.latestMetrics(data, currentWorkoutId);
-    const draft = loadDraft();
-    els.sessionDate.value = draft?.date || today();
-    els.exerciseList.innerHTML = "";
-
-    workout.exercises.forEach((exercise) => {
-      const item = $("#exerciseTemplate").content.firstElementChild.cloneNode(true);
-      const previous = latest.get(exercise.id);
-      const draftItem = draft?.exercises?.find((entry) => entry.exerciseId === exercise.id);
-      const source = draftItem || previous || {};
-      item.dataset.exerciseId = exercise.id;
-      item.dataset.exerciseName = exercise.name;
-      item.querySelector(".exercise-name").textContent = exercise.name;
-      item.querySelector(".previous").textContent = previous
-        ? `Ранее: ${previous.weight} кг × ${previous.reps}, ${previous.sets} подх.`
-        : "Предыдущих данных нет";
-      item.querySelector(".weight-input").value = source.weight ?? "";
-      item.querySelector(".sets-input").value = source.sets ?? "";
-      item.querySelector(".reps-input").value = source.reps ?? "";
-      item.querySelector(".done-input").checked = Boolean(draftItem?.completed);
-      item.addEventListener("input", persistDraft);
-      item.addEventListener("change", persistDraft);
-      els.exerciseList.append(item);
-    });
-    updateCompletion();
-  }
-
-  function renderHistory() {
-    els.historyList.innerHTML = "";
-    const sessions = [...data.history].sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    if (!sessions.length) {
-      els.historyList.innerHTML = '<p class="empty">История пока пуста.</p>';
-      return;
-    }
-    for (const session of sessions) {
-      const workout = data.workouts.find((item) => String(item.id) === String(session.workoutId));
-      const done = (session.exercises || []).filter((item) => item.completed).length;
-      const details = document.createElement("details");
-      details.className = "history-card";
-      details.innerHTML = `
-        <summary>${escapeHtml(workout?.name || `Тренировка №${session.workoutId}`)} · ${formatDate(session.date)}</summary>
-        <p class="history-meta">Выполнено ${done} из ${(session.exercises || []).length}</p>
-        <table class="history-table">
-          <thead><tr><th>Упражнение</th><th>Вес</th><th>Подх.</th><th>Повт.</th></tr></thead>
-          <tbody>${(session.exercises || []).map((item) => `
-            <tr><td>${item.completed ? "✓ " : "— "}${escapeHtml(item.name)}</td><td>${item.weight}</td><td>${item.sets}</td><td>${item.reps}</td></tr>
-          `).join("")}</tbody>
-        </table>`;
-      els.historyList.append(details);
-    }
-  }
-
-  function formatDate(value) {
-    const [year, month, day] = String(value).split("-").map(Number);
-    return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" }).format(new Date(year, month - 1, day));
-  }
-
-  function escapeHtml(value) {
-    const span = document.createElement("span");
-    span.textContent = String(value ?? "");
-    return span.innerHTML;
-  }
-
-  function renderExerciseSelect() {
-    const current = els.exerciseSelect.value;
-    els.exerciseSelect.innerHTML = data.workouts.flatMap((workout) => workout.exercises).map((exercise) =>
-      `<option value="${escapeHtml(exercise.id)}">${escapeHtml(exercise.name)}</option>`,
-    ).join("");
-    if ([...els.exerciseSelect.options].some((option) => option.value === current)) els.exerciseSelect.value = current;
-    drawChart();
-  }
-
-  function drawChart() {
-    const canvas = $("#progressChart");
-    const empty = $("#chartEmpty");
-    const ctx = canvas.getContext("2d");
-    const points = TrainingCore.chartSeries(data, els.exerciseSelect.value);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    empty.classList.toggle("hidden", points.length > 0);
-    if (!points.length) return;
-
-    const pad = { left: 70, right: 35, top: 34, bottom: 62 };
-    const plotW = canvas.width - pad.left - pad.right;
-    const plotH = canvas.height - pad.top - pad.bottom;
-    const max = Math.max(...points.map((item) => item.weight), 1);
-    const min = Math.min(...points.map((item) => item.weight), 0);
-    const range = Math.max(max - min, 1);
-    const x = (index) => pad.left + (points.length === 1 ? plotW / 2 : (index / (points.length - 1)) * plotW);
-    const y = (weight) => pad.top + plotH - ((weight - min) / range) * plotH;
-
-    ctx.strokeStyle = "#333d2b";
-    ctx.fillStyle = "#a8b29e";
-    ctx.font = "20px system-ui";
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 4; i += 1) {
-      const value = min + (range * i) / 4;
-      const py = y(value);
-      ctx.beginPath(); ctx.moveTo(pad.left, py); ctx.lineTo(canvas.width - pad.right, py); ctx.stroke();
-      ctx.fillText(`${value.toFixed(value % 1 ? 1 : 0)} кг`, 8, py + 7);
-    }
-
-    ctx.strokeStyle = "#c8f56a";
-    ctx.lineWidth = 5;
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    points.forEach((point, index) => index ? ctx.lineTo(x(index), y(point.weight)) : ctx.moveTo(x(index), y(point.weight)));
-    ctx.stroke();
-    points.forEach((point, index) => {
-      ctx.fillStyle = "#c8f56a";
-      ctx.beginPath(); ctx.arc(x(index), y(point.weight), 7, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#a8b29e";
-      ctx.textAlign = "center";
-      ctx.fillText(point.date.slice(5).replace("-", "."), x(index), canvas.height - 22);
-    });
-    ctx.textAlign = "start";
-  }
-
-  function renderApp() {
-    currentWorkoutId = String(data.ui.lastSelectedWorkoutId || data.workouts[0]?.id || "1");
-    els.workoutSelect.innerHTML = data.workouts.map((item) =>
-      `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name || `Тренировка №${item.id}`)}</option>`,
-    ).join("");
-    els.workoutSelect.value = currentWorkoutId;
-    renderWorkout();
-    renderHistory();
-    renderExerciseSelect();
-  }
-
-  async function connect(event) {
-    event.preventDefault();
-    token = els.tokenInput.value.trim();
-    repository = els.repoInput.value.trim();
-    if (!token || !repository) return;
-    message(els.connectionMessage, "Проверяю доступ…");
-    try {
-      const user = await request(`${apiBase}/user`);
-      owner = user.login;
-      data = await loadRemoteData();
-      if (!data.workouts.length) throw new Error("В JSON нет программ тренировок.");
-      els.tokenInput.value = "";
-      els.connectionPanel.classList.add("hidden");
-      els.app.classList.remove("hidden");
-      els.connectionButton.classList.add("connected");
-      els.connectionLabel.textContent = `${owner}/${repository}`;
-      renderApp();
-      message(els.appMessage, "Данные загружены из приватного репозитория.", "success");
-    } catch (error) {
-      token = "";
-      message(els.connectionMessage, friendlyError(error), "error");
-    }
-  }
-
-  function friendlyError(error) {
-    if (error.status === 401) return "Токен не принят GitHub. Проверьте его значение и срок действия.";
-    if (error.status === 404) return `Репозиторий или файл ${DATA_PATH} не найден. Проверьте имя и доступ токена.`;
-    if (error.status === 403) return "У токена недостаточно прав. Нужен Contents: Read and write только для репозитория данных.";
-    return error.message || "Не удалось подключиться к GitHub.";
-  }
-
-  async function saveWorkout(event) {
-    event.preventDefault();
-    const draft = collectDraft();
-    if (!draft.exercises.some((item) => item.completed)) {
-      message(els.appMessage, "Отметьте хотя бы одно выполненное упражнение.", "error");
-      return;
-    }
-    els.saveButton.disabled = true;
-    message(els.appMessage, "Сохраняю в приватный репозиторий…");
-    try {
-      const latestRemote = await loadRemoteData();
-      const session = {
-        id: TrainingCore.makeId(),
-        date: draft.date,
-        workoutId: currentWorkoutId,
-        createdAt: new Date().toISOString(),
-        exercises: draft.exercises,
-      };
-      const merged = TrainingCore.mergeSession(TrainingCore.mergeRemoteWithLocal(latestRemote, data), session);
-      await saveRemoteData(merged, fileSha);
-      data = merged;
-      localStorage.removeItem(DRAFT_KEY);
-      renderWorkout();
-      renderHistory();
-      drawChart();
-      message(els.appMessage, "Тренировка сохранена.", "success");
-    } catch (error) {
-      message(els.appMessage, friendlyError(error), "error");
-    } finally {
-      els.saveButton.disabled = false;
-    }
-  }
-
-  els.connectionForm.addEventListener("submit", connect);
-  els.connectionButton.addEventListener("click", () => {
-    if (token) return;
-    els.connectionPanel.classList.toggle("hidden");
+'use strict';
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+let state={workouts:[],history:[],editable:false},workoutId='1',editId=null,editVersion=null,draftId=crypto.randomUUID(),dirty=false,pinMode='unlock',showTrash=false;
+const desc={'1':'Грудь · ноги · руки','2':'Спина · плечи · грудь','3':'Грудь · руки'};
+const muscles={'bench-press':'Грудь · трицепс','leg-press':'Квадрицепс · ягодицы','seated-hammer-curl':'Бицепс · предплечья','lying-leg-curl':'Задняя поверхность бедра','barbell-wrist-curl':'Предплечья','incline-bench-press':'Верх груди · трицепс','lat-pulldown':'Широчайшие мышцы спины','lateral-raise':'Средние дельты','reverse-pec-deck':'Задние дельты','assisted-pull-up':'Гравитрон · вес помощи','dumbbell-curl':'Бицепс','pec-deck':'Грудь','triceps-pushdown':'Трицепс','pullover':'Грудь · широчайшие'};
+const hints={'bench-press':'Штанга: общий вес вместе с грифом.','leg-press':'Указывай вес на тренажёре одинаковым способом каждый раз.','seated-hammer-curl':'Вес одной гантели.','lateral-raise':'Вес одной гантели.','dumbbell-curl':'Вес одной гантели.','assisted-pull-up':'Это вес противовеса: меньше помощи — выше нагрузка.','pullover':'Вес одной гантели.'};
+function escape(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function today(){const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);}
+function date(s){return new Date(s+'T12:00:00').toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});}
+function number(v){return Number(v).toLocaleString('ru-RU',{maximumFractionDigits:2});}
+function sets(e){return e?.setDetails||Array.from({length:e?.sets||3},()=>({weight:e?.weight??0,reps:e?.reps||12,done:Boolean(e?.completed)}));}
+function doneSets(e){return sets(e).filter(s=>s.done);}
+function latest(id){for(const s of state.history){const e=s.exercises.find(e=>e.exerciseId===id);if(e?.completed&&s.id!==editId)return{...e,date:s.date};}return null;}
+let toastTimeout;function toast(text,error=false){$('#toast').textContent=text;$('#toast').classList.toggle('error-toast',error);$('#toast').hidden=false;clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>$('#toast').hidden=true,error?8000:4500);}
+const API_ORIGIN=window.TRAINING_API_ORIGIN||'';
+const DEVICE_KEY='my-training-cloudflare-device-v1';
+let accessToken='';
+try{
+  const saved=JSON.parse(localStorage.getItem(DEVICE_KEY)||sessionStorage.getItem(DEVICE_KEY)||'null');
+  if(saved?.expires>Date.now()&&/^[a-f0-9]{64}$/.test(saved.token))accessToken=saved.token;
+}catch{}
+function forgetDevice(){accessToken='';try{localStorage.removeItem(DEVICE_KEY);sessionStorage.removeItem(DEVICE_KEY);}catch{}}
+function rememberDevice(login,permanent){
+  forgetDevice();accessToken=login.deviceToken;
+  try{(permanent?localStorage:sessionStorage).setItem(DEVICE_KEY,JSON.stringify({token:login.deviceToken,expires:login.expires}));}
+  catch{toast('Браузер не разрешил запомнить устройство. Доступ сохранится до закрытия страницы.',true);}
+}
+async function request(path,body){
+  let response;
+  const headers={...(body===undefined?{}:{'Content-Type':'application/json'}),...(accessToken?{Authorization:'Bearer '+accessToken}:{})};
+  try{response=await fetch(API_ORIGIN+path,{method:body===undefined?'GET':'POST',headers,credentials:'omit',cache:'no-store',body:body===undefined?undefined:JSON.stringify(body)});}
+  catch{throw new Error('Нет соединения с сервером. Черновик новой тренировки остаётся на этом устройстве.');}
+  let value;try{value=await response.json();}catch{throw new Error('Сервер временно недоступен. Попробуй ещё раз.');}
+  if(!response.ok){if(response.status===401){forgetDevice();state.editable=false;updateAccess();}throw new Error(value.error||'Не удалось выполнить запрос.');}
+  if(path==='/api/data'&&!value.editable&&accessToken)forgetDevice();
+  return value;
+}
+async function refresh(){state=await request('/api/data');updateAccess();renderPicker();renderHistory();renderProgress();}
+function updateAccess(){$('#accessLabel').textContent=state.editable?'Выйти':'Ввести PIN';$('#accessButton').classList.toggle('unlocked',state.editable);$('#viewBadge').textContent=state.editable?'Редактирование открыто':'Режим просмотра';$('#changePin').hidden=!state.editable;$('#devicesButton').hidden=!state.editable;$('#saveButton').textContent=editId?'Сохранить изменения':'Сохранить тренировку';$('#saveButton').disabled=!state.editable;$('#saveHint').textContent=state.editable?'Сохраняется на сервере и доступно с любого устройства.':'Для записи результатов введи PIN.';$$('#exerciseList input, #exerciseList button, #sessionDate, #notes').forEach(e=>e.disabled=!state.editable);}
+function renderPicker(){$('#workoutPicker').innerHTML=state.workouts.map(w=>{const last=state.history.find(s=>s.workoutId===w.id);return '<button class="workout-option '+(w.id===workoutId?'selected':'')+'" data-workout="'+escape(w.id)+'" aria-pressed="'+(w.id===workoutId)+'"><div class="picker-top"><strong>'+escape(w.name)+'</strong><span class="picker-mark">'+(w.id===workoutId?'●':'○')+'</span></div><p>'+escape(desc[w.id]||'')+'</p><span>'+(last?'Последняя: '+date(last.date).replace(' 2026 г.',''):'Пока без записей')+'</span></button>';}).join('');$$('[data-workout]').forEach(b=>b.onclick=()=>switchWorkout(b.dataset.workout));}
+function key(){return'my-training-draft-v2-'+workoutId;}
+function collect(){return{id:editId||draftId,version:editVersion,date:$('#sessionDate').value,workoutId,notes:$('#notes').value,exercises:$$('.exercise').map(card=>({exerciseId:card.dataset.exercise,setDetails:[...card.querySelectorAll('.set-row')].map(row=>({weight:Number(row.querySelector('.weight').value),reps:Number(row.querySelector('.reps').value),done:row.querySelector('.done-check').checked}))}))};}
+function persist(){dirty=true;if(!editId){try{localStorage.setItem(key(),JSON.stringify(collect()));}catch{toast('Не удалось сохранить черновик на телефоне. Сохрани тренировку на сервере.',true);}}updateCompletion();}
+function savedDraft(){try{return JSON.parse(localStorage.getItem(key())||'null');}catch{return null;}}
+function switchWorkout(id){if(editId&&dirty&&!confirm('Выйти из редактирования без сохранения изменений?'))return;if(!editId&&dirty)persist();editId=null;editVersion=null;workoutId=id;dirty=false;renderPicker();renderWorkout();}
+function rowHTML(s,i){return '<div class="set-row '+(s.done?'done':'')+'"><span class="set-number">'+(i+1)+'</span><input aria-label="Вес в подходе '+(i+1)+'" class="weight" type="number" inputmode="decimal" min="0" max="1000" step="0.25" value="'+escape(s.weight)+'"><input aria-label="Повторы в подходе '+(i+1)+'" class="reps" type="number" inputmode="numeric" min="1" max="200" step="1" value="'+escape(s.reps)+'"><input aria-label="Подход '+(i+1)+' выполнен" class="done-check" type="checkbox" '+(s.done?'checked':'')+'></div>';}
+function renderWorkout(session){const workout=state.workouts.find(w=>w.id===workoutId);if(!workout)return;const draft=session||savedDraft();draftId=draft?.id||crypto.randomUUID();$('#sessionDate').value=draft?.date||today();$('#notes').value=draft?.notes||'';$('#workoutTitle').textContent='Упражнения';$('#workoutCount').textContent=workout.exercises.length+' в программе';$('#editBanner').hidden=!editId;$('#cancelEdit').hidden=!editId;$('#editBanner').textContent=editId?'Редактирование занятия от '+date(session.date):'';
+$('#exerciseList').innerHTML=workout.exercises.map((ex,i)=>{const prev=latest(ex.id);const saved=draft?.exercises?.find(e=>e.exerciseId===ex.id);const rows=saved?sets(saved):sets(prev).map(s=>({...s,done:false}));const prevDone=prev?doneSets(prev):[];const previous=prevDone.length?number(prevDone[0].weight)+' кг · '+prevDone.map(s=>s.reps).join(' / ')+' повт.':'Нет прошлых записей';return '<article class="exercise" data-exercise="'+escape(ex.id)+'"><div class="exercise-head"><span class="exercise-number">'+String(i+1).padStart(2,'0')+'</span><div class="exercise-title"><h3>'+escape(ex.name)+'</h3><p class="muscles">'+escape(muscles[ex.id]||'')+'</p></div></div><div class="previous">В прошлый раз: <b>'+escape(previous)+'</b>'+(prev?' <span>· '+escape(date(prev.date).replace(' 2026 г.',''))+'</span>':'')+'</div><div class="set-head"><span>Подход</span><span>'+(ex.id==='assisted-pull-up'?'Помощь, кг':'Вес, кг')+'</span><span>Повторы</span><span>Готово</span></div><div class="set-rows">'+rows.map(rowHTML).join('')+'</div><div class="set-actions"><button type="button" class="text-button add-set">+ Подход</button><button type="button" class="text-button remove-set">Убрать последний</button></div>'+(hints[ex.id]?'<p class="muted hint">'+escape(hints[ex.id])+'</p>':'')+'</article>';}).join('');
+$$('.exercise').forEach(card=>{card.addEventListener('input',persist);card.querySelector('.add-set').onclick=()=>{const rows=card.querySelectorAll('.set-row');if(rows.length>=12)return;const last=rows[rows.length-1];card.querySelector('.set-rows').insertAdjacentHTML('beforeend',rowHTML({weight:Number(last.querySelector('.weight').value),reps:Number(last.querySelector('.reps').value),done:false},rows.length));persist();updateAccess();};card.querySelector('.remove-set').onclick=()=>{const rows=card.querySelectorAll('.set-row');if(rows.length>1){rows[rows.length-1].remove();persist();}};});updateCompletion();updateAccess();}
+function updateCompletion(){const rows=$$('.set-row'),done=rows.filter(r=>r.querySelector('.done-check').checked).length;$('#doneCount').textContent=done;$('#totalCount').textContent='/ '+rows.length;$('#completionBar').style.width=(rows.length?done/rows.length*100:0)+'%';$('#completionLabel').textContent=done===rows.length&&done?'Все подходы выполнены':done?'Осталось '+(rows.length-done)+' подходов':'Можно начинать';rows.forEach(r=>r.classList.toggle('done',r.querySelector('.done-check').checked));$$('.exercise').forEach(c=>c.classList.toggle('all-done',[...c.querySelectorAll('.done-check')].every(e=>e.checked)));}
+function showView(name){$$('.view').forEach(v=>v.hidden=v.id!==name+'View');$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));if(name==='progress')renderProgress();if(name==='history')renderHistory();window.scrollTo({top:0,behavior:'smooth'});}
+function renderHistoryEntries(){const history=state.history.filter(s=>$('#historyFilter').value==='all'||s.workoutId===$('#historyFilter').value);$('#historyList').innerHTML=history.length?history.map(s=>{const w=state.workouts.find(w=>w.id===s.workoutId),count=s.exercises.reduce((n,e)=>n+doneSets(e).length,0);return '<details class="history-card"><summary><div><span class="history-date">'+escape(date(s.date))+'</span><h3>'+escape(w?.name||s.workoutId)+'</h3></div><span class="history-stat">'+count+' подходов · +</span></summary><div class="table-wrap"><table><thead><tr><th>Упражнение</th><th>Вес, кг × повторы</th></tr></thead><tbody>'+s.exercises.map(e=>'<tr><td>'+escape(e.name)+'</td><td>'+doneSets(e).map(r=>number(r.weight)+' × '+r.reps).join(' · ')+'</td></tr>').join('')+'</tbody></table></div>'+(s.notes?'<p class="history-note">'+escape(s.notes)+'</p>':'')+(s.imported?'<p class="muted hint">'+escape(s.sourceNote||'Перенесено из дневника. Повторы по подходам восстановлены из общей записи.')+'</p>':'')+(state.editable?'<div class="history-actions"><button class="button secondary edit-entry" data-id="'+escape(s.id)+'">Исправить запись</button><button class="button subtle danger delete-entry" data-id="'+escape(s.id)+'">Удалить</button></div>':'')+'</details>';}).join(''):'<p class="empty">Здесь появятся сохранённые тренировки.</p>';$$('.edit-entry').forEach(b=>b.onclick=()=>startEdit(b.dataset.id));$$('.delete-entry').forEach(b=>b.onclick=()=>deleteEntry(b.dataset.id));}
+function startEdit(id){if(dirty&&editId&&!confirm('Отменить текущие изменения?'))return;const s=state.history.find(s=>s.id===id);if(!s)return;editId=id;editVersion=s.version;workoutId=s.workoutId;dirty=false;renderPicker();renderWorkout(s);showView('workout');}
+function renderHistory(){
+  const toggle=$('#trashToggle');
+  if(!state.editable)showTrash=false;
+  if(toggle){toggle.hidden=!state.editable;toggle.textContent=showTrash?'К истории':'Корзина ('+(state.trash?.length||0)+')';}
+  $('#historyFilter').closest('label').hidden=showTrash;
+  if(!showTrash)return renderHistoryEntries();
+  $('#historyList').innerHTML='<p class="muted">Удалённые занятия не учитываются в статистике. Их можно восстановить.</p>'+(state.trash?.length?state.trash.map(s=>'<article class="history-card"><div class="list-heading"><div><span class="history-date">'+escape(date(s.date))+'</span><h3>'+escape(state.workouts.find(w=>w.id===s.workoutId)?.name||s.workoutId)+'</h3></div><button class="button secondary restore-entry" data-id="'+escape(s.id)+'">Восстановить</button></div></article>').join(''):'<p class="empty">В корзине пусто.</p>');
+  $$('.restore-entry').forEach(button=>button.onclick=async()=>{
+    const entry=state.trash.find(s=>s.id===button.dataset.id);if(!entry)return;
+    button.disabled=true;
+    try{await request('/api/restore',{id:entry.id,version:entry.version});await refresh();toast('Тренировка восстановлена.');}
+    catch(e){toast(e.message,true);button.disabled=false;}
   });
-  els.workoutSelect.addEventListener("change", () => {
-    currentWorkoutId = els.workoutSelect.value;
-    data.ui.lastSelectedWorkoutId = currentWorkoutId;
-    renderWorkout();
-  });
-  els.exerciseSelect.addEventListener("change", drawChart);
-  els.workoutForm.addEventListener("submit", saveWorkout);
-  els.sessionDate.value = today();
-
-  $$(".tab").forEach((tab) => tab.addEventListener("click", () => {
-    $$(".tab").forEach((item) => item.classList.toggle("active", item === tab));
-    $$(".view").forEach((view) => view.classList.add("hidden"));
-    $(`#${tab.dataset.view}View`).classList.remove("hidden");
-    if (tab.dataset.view === "progress") drawChart();
-  }));
-})();
+}
+async function deleteEntry(id){const s=state.history.find(s=>s.id===id);if(!s||!confirm('Удалить тренировку от '+date(s.date)+'? Запись можно будет восстановить из корзины.'))return;try{await request('/api/delete',{id,version:s.version});await refresh();if(editId===id){editId=null;editVersion=null;dirty=false;renderWorkout();}toast('Запись удалена.');}catch(e){toast(e.message,true);}}
+function renderProgress(){const now=today(),month=now.slice(0,7),monday=new Date(now+'T12:00:00');monday.setDate(monday.getDate()-((monday.getDay()+6)%7));const weekStart=new Date(monday.getTime()-monday.getTimezoneOffset()*60000).toISOString().slice(0,10);const weekly=state.history.filter(s=>s.date>=weekStart&&s.date<=now).length;$('#stats').innerHTML='<div class="stat-card"><strong>'+state.history.length+'</strong><span>занятий в дневнике</span></div><div class="stat-card"><strong>'+state.history.filter(s=>s.date.startsWith(month)).length+'</strong><span>в этом месяце</span></div><div class="stat-card"><strong>'+weekly+' <span style="display:inline;font-size:22px">/ 3</span></strong><span>на этой неделе</span></div>';const selected=$('#exerciseSelect').value;$('#exerciseSelect').innerHTML=state.workouts.flatMap(w=>w.exercises).map(e=>'<option value="'+escape(e.id)+'">'+escape(e.name)+'</option>').join('');if(selected)$('#exerciseSelect').value=selected;drawChart();}
+function drawChart(){const ex=$('#exerciseSelect').value,metric=$('#metricSelect').value;const points=[...state.history].reverse().flatMap(s=>{const e=s.exercises.find(e=>e.exerciseId===ex),done=e?doneSets(e):[];if(!done.length)return[];return[{date:s.date,value:metric==='weight'?(ex==='assisted-pull-up'?Math.min(...done.map(s=>s.weight)):Math.max(...done.map(s=>s.weight))):metric==='reps'?done.reduce((n,s)=>n+s.reps,0):done.reduce((n,s)=>n+s.weight*s.reps,0),sets:done}];});$('#metricNote').textContent=ex==='assisted-pull-up'?'Гравитрон: снижение веса помощи означает рост нагрузки. Объём по противовесу не показывает реальную нагрузку.':metric==='weight'?'Максимальный вес среди выполненных подходов.':metric==='reps'?'Сумма повторений во всех выполненных подходах.':'Сумма веса × повторов. Для гантелей используется вес одной гантели.';if(!points.length){$('#chart').innerHTML='<p class="empty">Пока нет результатов по этому упражнению.</p>';$('#progressTable').innerHTML='';return;}const W=800,H=300,pad={l:64,r:28,t:30,b:42},max=Math.max(...points.map(p=>p.value),1)*1.12;const x=i=>points.length===1?W/2:pad.l+i*(W-pad.l-pad.r)/(points.length-1),y=v=>H-pad.b-v/max*(H-pad.t-pad.b);let svg='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Динамика результатов; точные значения в таблице ниже"><defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#cbf27b" stop-opacity=".18"/><stop offset="1" stop-color="#cbf27b" stop-opacity="0"/></linearGradient></defs>';for(let i=0;i<5;i++){const v=max*i/4,py=y(v);svg+='<line x1="'+pad.l+'" x2="'+(W-pad.r)+'" y1="'+py+'" y2="'+py+'" stroke="#303730"/><text x="'+(pad.l-13)+'" y="'+(py+5)+'" fill="#9aa597" text-anchor="end" font-size="14">'+number(v)+'</text>';}const path=points.map((p,i)=>(i?'L':'M')+x(i)+','+y(p.value)).join(' ');svg+='<path d="'+path+' L'+x(points.length-1)+','+(H-pad.b)+' L'+x(0)+','+(H-pad.b)+' Z" fill="url(#fill)"/><path d="'+path+'" stroke="#cbf27b" stroke-width="3" fill="none"/>';points.forEach((p,i)=>{svg+='<circle cx="'+x(i)+'" cy="'+y(p.value)+'" r="5" fill="#cbf27b"><title>'+date(p.date)+': '+number(p.value)+'</title></circle>';if(points.length<7||i===0||i===points.length-1)svg+='<text x="'+x(i)+'" y="'+(H-12)+'" text-anchor="middle" fill="#9aa597" font-size="14">'+p.date.slice(8)+'.'+p.date.slice(5,7)+'</text>';});$('#chart').innerHTML=svg+'</svg>';$('#progressTable').innerHTML='<table><thead><tr><th>Дата</th><th>'+escape($('#metricSelect').selectedOptions[0].textContent)+'</th><th>Выполненные подходы</th></tr></thead><tbody>'+[...points].reverse().map(p=>'<tr><td>'+escape(date(p.date))+'</td><td>'+number(p.value)+'</td><td>'+p.sets.map(s=>number(s.weight)+' × '+s.reps).join(' · ')+'</td></tr>').join('')+'</tbody></table>';}
+function openPin(mode='unlock'){pinMode=mode;$('#pinTitle').textContent=mode==='change'?'Новый PIN':'Введи PIN';$('#pinDescription').textContent=mode==='change'?'После смены кода редактирование на всех устройствах закроется.':'Четыре цифры, чтобы записывать результаты.';$('#pinSubmit').textContent=mode==='change'?'Сменить PIN':'Открыть редактирование';$('#pinConfirmLabel').hidden=mode!=='change';$('#deviceOptions').hidden=mode==='change';$('#pinConfirm').required=mode==='change';$('#pinInput').value='';$('#pinConfirm').value='';$('#pinError').textContent='';$('#pinDialog').showModal();$('#pinInput').focus();}
+$('#pinForm').onsubmit=async e=>{e.preventDefault();const button=$('#pinSubmit');button.disabled=true;$('#pinError').textContent='';try{if(pinMode==='change'&&$('#pinInput').value!==$('#pinConfirm').value)throw new Error('Коды не совпадают.');const remember=$('#rememberDevice').checked;const login=await request(pinMode==='change'?'/api/pin':'/api/unlock',{pin:$('#pinInput').value,remember,deviceName:$('#deviceName').value});if(pinMode==='change')forgetDevice();else rememberDevice(login,remember);$('#pinDialog').close();$('#pinInput').value='';$('#pinConfirm').value='';await refresh();if(!dirty&&!editId)renderWorkout();else updateAccess();toast(pinMode==='change'?'PIN изменён. Введи новый код для записи.':remember?'Устройство подтверждено на 90 дней.':'Доступ открыт на 12 часов в этом браузере.');}catch(e){$('#pinError').textContent=e.message;}finally{button.disabled=false;}};
+$('#accessButton').onclick=async()=>{if(!state.editable)return openPin();if(dirty)persist();try{await request('/api/lock',{});forgetDevice();state.editable=false;updateAccess();renderHistory();toast('Редактирование закрыто.');}catch(e){toast(e.message,true);}};
+$('.dialog-close').onclick=()=>$('#pinDialog').close();$('#changePin').onclick=()=>openPin('change');
+$('#saveButton').onclick=async()=>{if(!state.editable)return openPin();const value=collect();if(!value.date)return toast('Укажи дату.',true);if(!value.exercises.some(e=>e.setDetails.some(s=>s.done)))return toast('Отметь хотя бы один выполненный подход.',true);for(const input of $$('#exerciseList input[type=number]'))if(!input.checkValidity()){input.reportValidity();return;}$('#saveButton').disabled=true;try{await request('/api/session',value);if(!editId)localStorage.removeItem(key());editId=null;editVersion=null;dirty=false;await refresh();renderWorkout();toast('Тренировка сохранена. Хорошая работа!');}catch(e){toast(e.message,true);}finally{updateAccess();}};
+$('#cancelEdit').onclick=()=>{if(dirty&&!confirm('Отменить изменения этой записи?'))return;editId=null;editVersion=null;dirty=false;renderWorkout();};
+$('#sessionDate').oninput=persist;$('#notes').oninput=persist;$$('[data-view]').forEach(b=>b.onclick=()=>showView(b.dataset.view));$('#historyFilter').onchange=renderHistory;$('#exerciseSelect').onchange=drawChart;$('#metricSelect').onchange=drawChart;
+$('#exportButton').onclick=()=>{const blob=new Blob([JSON.stringify({schemaVersion:2,workouts:state.workouts,history:state.history},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='training-'+today()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+let timerLength=90,timerRemaining=90,timerEnd=0,timerInterval=null;function showTimer(){const seconds=timerEnd?Math.max(0,Math.ceil((timerEnd-Date.now())/1000)):timerRemaining;$('#timerDisplay').textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');if(timerEnd&&seconds===0){clearInterval(timerInterval);timerEnd=0;timerRemaining=timerLength;$('#timerButton').textContent='Ещё раз';toast('Отдых закончен. Можно к следующему подходу.');navigator.vibrate?.([180,100,180]);}}
+$('#timerButton').onclick=()=>{if(timerEnd){timerRemaining=Math.max(0,Math.ceil((timerEnd-Date.now())/1000));timerEnd=0;clearInterval(timerInterval);$('#timerButton').textContent='Продолжить';}else{timerEnd=Date.now()+timerRemaining*1000;timerInterval=setInterval(showTimer,250);$('#timerButton').textContent='Пауза';}showTimer();};$('#timerReset').onclick=()=>{timerEnd=0;clearInterval(timerInterval);timerRemaining=timerLength;$('#timerButton').textContent='Запустить таймер';showTimer();};$$('[data-seconds]').forEach(b=>b.onclick=()=>{timerLength=Number(b.dataset.seconds);$$('[data-seconds]').forEach(x=>x.classList.toggle('selected',x===b));$('#timerReset').click();});document.addEventListener('visibilitychange',()=>{if(!document.hidden)showTimer();});
+window.addEventListener('beforeunload',e=>{if(editId&&dirty){e.preventDefault();e.returnValue='';}});
+const ua=navigator.userAgent;$('#deviceName').value=/Android/i.test(ua)?'Телефон Android':/iPhone|iPad/i.test(ua)?'iPhone / iPad':/Windows/i.test(ua)?'Компьютер Windows':/Macintosh/i.test(ua)?'Mac':'Компьютер / браузер';
+$('#headerDate').textContent=new Date().toLocaleDateString('ru-RU',{day:'numeric',month:'long'}).toUpperCase();
+const trashToggle=document.createElement('button');
+trashToggle.id='trashToggle';trashToggle.className='button secondary history-trash-toggle';trashToggle.hidden=true;
+$('#historyList').before(trashToggle);
+trashToggle.onclick=()=>{showTrash=!showTrash;renderHistory();};
+$('#devicesButton').onclick=async()=>{
+  $('#devicesDialog').showModal();
+  await loadDevices();
+};
+$('#closeDevices').onclick=()=>$('#devicesDialog').close();
+async function loadDevices(){
+  $('#devicesList').textContent='Загружаю устройства…';
+  try{
+    const {devices}=await request('/api/devices');
+    $('#devicesList').innerHTML=devices.map(device=>'<article class="device-card"><div><strong>'+escape(device.label)+(device.current?' <span class="device-current">Это устройство</span>':'')+'</strong><p class="muted">Доступ до '+escape(new Date(device.expires).toLocaleDateString('ru-RU'))+'</p></div><button class="button subtle revoke-device" data-id="'+escape(device.id)+'">Отключить</button></article>').join('')||'<p class="muted">Нет подтверждённых устройств.</p>';
+    $$('.revoke-device').forEach(button=>button.onclick=async()=>{
+      const device=devices.find(d=>d.id===button.dataset.id);button.disabled=true;
+      try{
+        await request('/api/revoke-device',{id:device.id});
+        if(device.current){forgetDevice();$('#devicesDialog').close();await refresh();updateAccess();}
+        else await loadDevices();
+        toast('Устройство отключено. Для записи снова потребуется PIN.');
+      }catch(e){toast(e.message,true);button.disabled=false;}
+    });
+  }catch(e){$('#devicesList').textContent=e.message;}
+}
+(async()=>{try{await refresh();renderWorkout();$('#loadState').hidden=true;$('#content').hidden=false;}catch(e){$('#loadState').textContent=e.message+' ';const b=document.createElement('button');b.textContent='Повторить';b.className='button secondary';b.onclick=()=>location.reload();$('#loadState').append(b);}})();

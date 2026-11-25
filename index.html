@@ -1,134 +1,25 @@
 <!doctype html>
-<html lang="ru">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#10140d" />
-    <meta name="description" content="Приватный дневник тренировок с хранением данных в GitHub" />
-    <title>Мои тренировки</title>
-    <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <header class="topbar">
-      <div>
-        <p class="eyebrow">Персональный дневник</p>
-        <h1>Мои тренировки</h1>
-      </div>
-      <button id="connectionButton" class="status-button" type="button">
-        <span class="status-dot"></span>
-        <span id="connectionLabel">Подключить данные</span>
-      </button>
-    </header>
-
-    <main class="shell">
-      <section id="connectionPanel" class="panel connection-panel">
-        <div>
-          <h2>Приватное подключение</h2>
-          <p class="muted">
-            Токен используется только в памяти этой вкладки и исчезнет после закрытия или обновления страницы.
-          </p>
-        </div>
-        <form id="connectionForm" class="connection-form">
-          <label>
-            Fine-grained PAT
-            <input id="tokenInput" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…" required />
-          </label>
-          <label>
-            Репозиторий данных
-            <input id="repoInput" value="my-training-data" autocomplete="off" spellcheck="false" required />
-          </label>
-          <button class="primary" type="submit">Подключить</button>
-        </form>
-        <p id="connectionMessage" class="message" role="status"></p>
-      </section>
-
-      <section id="app" class="hidden" aria-live="polite">
-        <nav class="tabs" aria-label="Разделы приложения">
-          <button class="tab active" data-view="workout" type="button">Тренировка</button>
-          <button class="tab" data-view="history" type="button">История</button>
-          <button class="tab" data-view="progress" type="button">Прогресс</button>
-        </nav>
-
-        <section id="workoutView" class="view">
-          <div class="workout-head">
-            <div>
-              <p class="eyebrow">Текущая программа</p>
-              <h2 id="workoutTitle">Тренировка</h2>
-            </div>
-            <label class="select-label">
-              Выбор
-              <select id="workoutSelect"></select>
-            </label>
-          </div>
-          <div class="progress-row">
-            <span id="remainingLabel">Осталось: 0</span>
-            <div class="progress-track"><span id="completionBar"></span></div>
-          </div>
-          <form id="workoutForm">
-            <div id="exerciseList" class="exercise-list"></div>
-            <div class="save-row">
-              <label>
-                Дата
-                <input id="sessionDate" type="date" required />
-              </label>
-              <button id="saveButton" class="primary" type="submit">Сохранить тренировку</button>
-            </div>
-          </form>
-        </section>
-
-        <section id="historyView" class="view hidden">
-          <div class="section-head">
-            <div>
-              <p class="eyebrow">Сохранённые занятия</p>
-              <h2>История</h2>
-            </div>
-          </div>
-          <div id="historyList" class="history-list"></div>
-        </section>
-
-        <section id="progressView" class="view hidden">
-          <div class="section-head progress-head">
-            <div>
-              <p class="eyebrow">Рабочий вес</p>
-              <h2>Прогресс</h2>
-            </div>
-            <label class="select-label">
-              Упражнение
-              <select id="exerciseSelect"></select>
-            </label>
-          </div>
-          <div class="chart-card">
-            <canvas id="progressChart" width="900" height="420" aria-label="График прогресса"></canvas>
-            <p id="chartEmpty" class="empty hidden">Для графика пока недостаточно данных.</p>
-          </div>
-        </section>
-
-        <p id="appMessage" class="message" role="status"></p>
-      </section>
-    </main>
-
-    <template id="exerciseTemplate">
-      <article class="exercise-card">
-        <div class="exercise-title-row">
-          <label class="check-wrap">
-            <input class="done-input" type="checkbox" />
-            <span class="checkmark">✓</span>
-          </label>
-          <div>
-            <h3 class="exercise-name"></h3>
-            <p class="previous muted"></p>
-          </div>
-        </div>
-        <div class="metric-grid">
-          <label>Вес, кг<input class="weight-input" type="number" min="0" step="0.5" inputmode="decimal" /></label>
-          <label>Подходы<input class="sets-input" type="number" min="0" step="1" inputmode="numeric" /></label>
-          <label>Повторения<input class="reps-input" type="number" min="0" step="1" inputmode="numeric" /></label>
-        </div>
-      </article>
-    </template>
-
-    <script src="core.js"></script>
-    <script src="app.js"></script>
-  </body>
-</html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#111411"><meta name="robots" content="noindex,nofollow"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://ihoudini-training-diary.cuddlyhydrangea128.chatgpt.site; object-src 'none'; base-uri 'self'; form-action 'self'"><meta name="description" content="Личный дневник тренировок: рабочие веса, подходы и прогресс"><title>Мои тренировки</title><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg"><link rel="stylesheet" href="style.css"></head>
+<body>
+<aside class="sidebar"><a class="brand" href="./" aria-label="Мои тренировки"><span class="brand-icon">▥</span><span>МОИ<br>ТРЕНИРОВКИ<span class="brand-sub">Личный дневник</span></span></a><nav aria-label="Разделы"><button data-view="workout" class="nav active"><span>▤</span> Тренировка</button><button data-view="history" class="nav"><span>◷</span> История</button><button data-view="progress" class="nav"><span>▥</span> Прогресс</button></nav><div class="side-bottom"><span class="small-label">ТВОЙ РИТМ</span><p>Каждый подход<br>имеет значение.</p><span class="muted">3 тренировки в неделю</span></div></aside>
+<main>
+<header><div class="header-label">ЛИЧНЫЙ ДНЕВНИК <span>/</span> <span id="headerDate"></span></div><button class="access" id="accessButton"><span class="lock-icon">◇</span><span id="accessLabel">Ввести PIN</span></button></header>
+<div id="loadState" role="status" class="load-state">Загружаю дневник…</div>
+<div id="content" hidden>
+<section id="workoutView" class="view">
+<div class="heading"><div><p class="eyebrow">СТАНОВИМСЯ СИЛЬНЕЕ</p><h1>Твоя тренировка<span class="accent">.</span></h1><p class="subtitle">Прошлый результат рядом. Следующий — за тобой.</p></div><span class="view-badge" id="viewBadge">Режим просмотра</span></div>
+<div class="workout-picker" role="group" aria-label="Выбор тренировки" id="workoutPicker"></div>
+<div class="workout-layout"><div>
+<div class="list-heading"><h2 id="workoutTitle">Упражнения</h2><span id="workoutCount" class="muted"></span></div>
+<div id="exerciseList"></div>
+<div class="finish-card"><div class="finish-fields"><label>Дата тренировки<input id="sessionDate" type="date" required></label><label class="notes-label">Заметка<textarea id="notes" rows="2" placeholder="Самочувствие, техника, ощущения…" maxlength="2000"></textarea></label></div><p id="editBanner" class="muted" hidden></p><div class="finish-actions"><button class="button primary" id="saveButton">Сохранить тренировку</button><button class="button subtle" id="cancelEdit" hidden>Отменить редактирование</button></div><p class="muted hint" id="saveHint">Для записи результатов введи PIN.</p></div>
+</div><aside class="session-aside"><div class="summary-card"><p class="eyebrow">ЭТА ТРЕНИРОВКА</p><div class="big-number"><span id="doneCount">0</span><span class="number-total" id="totalCount">/ 0</span></div><p class="muted">подходов выполнено</p><div class="progress-track"><div id="completionBar"></div></div><p id="completionLabel" class="completion-label">Можно начинать</p></div><div class="timer-card"><div class="list-heading"><h3>Отдых</h3><span class="timer-symbol">◷</span></div><div id="timerDisplay" class="timer-display">01:30</div><div class="timer-presets"><button data-seconds="60">60 с</button><button data-seconds="90" class="selected">90 с</button><button data-seconds="120">120 с</button></div><button id="timerButton" class="button secondary">Запустить таймер</button><button id="timerReset" class="text-button">Сбросить</button></div><p class="aside-note">Вес гантелей — на одну руку.<br>В гравитроне — вес помощи.</p></aside></div>
+</section>
+<section id="historyView" class="view" hidden><div class="heading"><div><p class="eyebrow">ШАГ ЗА ШАГОМ</p><h1>История<span class="accent">.</span></h1><p class="subtitle">Все сохранённые занятия в одном месте.</p></div><button id="exportButton" class="button secondary">Скачать записи</button></div><label class="filter-label">Тренировка<select id="historyFilter"><option value="all">Все тренировки</option><option value="1">Тренировка №1</option><option value="2">Тренировка №2</option><option value="3">Тренировка №3</option></select></label><div id="historyList"></div></section>
+<section id="progressView" class="view" hidden><div class="heading"><div><p class="eyebrow">ВИДЕТЬ РЕЗУЛЬТАТ</p><h1>Твой прогресс<span class="accent">.</span></h1><p class="subtitle">Вес, повторения и регулярность занятий.</p></div></div><div id="stats" class="stats-grid"></div><div class="chart-card"><div class="chart-controls"><label>Упражнение<select id="exerciseSelect"></select></label><label>Показатель<select id="metricSelect"><option value="weight">Рабочий вес, кг</option><option value="reps">Повторы за занятие</option><option value="volume">Объём: кг × повторы</option></select></label></div><p id="metricNote" class="muted"></p><div id="chart"></div><div id="progressTable" class="table-wrap"></div></div></section>
+</div>
+<footer><span>МОИ ТРЕНИРОВКИ</span><span>Твой темп. Твой прогресс.</span><button id="devicesButton" class="text-button" hidden>Устройства</button><button id="changePin" class="text-button" hidden>Сменить PIN</button></footer>
+</main>
+<nav class="mobile-nav" aria-label="Разделы"><button class="active" data-view="workout"><span>▤</span>Тренировка</button><button data-view="history"><span>◷</span>История</button><button data-view="progress"><span>▥</span>Прогресс</button></nav>
+<dialog id="pinDialog"><form id="pinForm"><button type="button" class="dialog-close" aria-label="Закрыть">×</button><p class="eyebrow">ДОСТУП К ЗАПИСИ</p><h2 id="pinTitle">Введи PIN</h2><p class="muted" id="pinDescription">Четыре цифры, чтобы записывать результаты.</p><label class="pin-label">PIN-код<input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="off" required></label><label id="pinConfirmLabel" class="pin-label" hidden>Повтори новый PIN<input id="pinConfirm" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label><div id="deviceOptions"><label class="device-label">Название устройства<input id="deviceName" type="text" maxlength="80" autocomplete="off"></label><label class="remember-label"><input id="rememberDevice" type="checkbox" checked> Запомнить этот браузер на 90 дней</label></div><p id="pinError" class="error" role="alert"></p><button class="button primary" id="pinSubmit">Открыть редактирование</button></form></dialog>
+<dialog id="devicesDialog"><button id="closeDevices" type="button" class="dialog-close" aria-label="Закрыть список устройств">×</button><p class="eyebrow">ДОСТУП К ЗАПИСИ</p><h2>Твои устройства</h2><p class="muted">Можно отключить любой браузер. Для повторного доступа потребуется PIN.</p><div id="devicesList"></div></dialog><div id="toast" class="toast" role="status" hidden></div><script src="config.js"></script><script src="app.js"></script></body></html>
