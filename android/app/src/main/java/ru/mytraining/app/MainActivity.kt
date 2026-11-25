@@ -16,6 +16,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.Alignment
 import kotlinx.coroutines.*
 import org.json.*
 import java.net.HttpURLConnection
@@ -36,20 +39,24 @@ class MainActivity:ComponentActivity(){
  private suspend fun api(path:String, body:JSONObject?=null):JSONObject=withContext(Dispatchers.IO){
   val c=URL("https://ihoudini-training-diary.cuddlyhydrangea128.chatgpt.site"+path).openConnection() as HttpURLConnection
   try{
-   c.connectTimeout=15000;c.readTimeout=15000;c.instanceFollowRedirects=false
+   c.connectTimeout=12000;c.readTimeout=12000;c.instanceFollowRedirects=true
+   c.setRequestProperty("Accept","application/json")
+   c.setRequestProperty("User-Agent","Mozilla/5.0 (Android) MyTraining/2.0")
+   c.setRequestProperty("Origin","https://oestepanov.github.io")
+   c.setRequestProperty("Cache-Control","no-cache")
    if(token.isNotEmpty()) c.setRequestProperty("Authorization","Bearer "+token)
    if(body!=null){c.requestMethod="POST";c.doOutput=true;c.setRequestProperty("Content-Type","application/json");c.outputStream.use{it.write(body.toString().toByteArray(Charsets.UTF_8))}}
    val status=c.responseCode
    val raw=(if(status in 200..299)c.inputStream else c.errorStream)?.bufferedReader()?.use{it.readText()}?:"{}"
-   val result=JSONObject(raw)
-   if(status !in 200..299) throw IllegalStateException(result.optString("error","Ошибка сервера: "+status))
+   val result=runCatching{JSONObject(raw)}.getOrElse{throw IllegalStateException("Сервер вернул не JSON (HTTP "+status+"). Проверь доступ к сайту и VPN.")}
+   if(status !in 200..299){if(status==401){token="";prefs.edit().remove("token").remove("expires").apply()};throw IllegalStateException(result.optString("error","Ошибка сервера: "+status))}
    result
   }finally{c.disconnect()}
  }
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
   if(prefs.getLong("expires",0)>System.currentTimeMillis())token=prefs.getString("token","")?:""
-  setContent{MaterialTheme(colorScheme=darkColorScheme(primary=lime,onPrimary=bg,background=bg,surface=surface)){Screen()}}
+  setContent{MaterialTheme(colorScheme=darkColorScheme(primary=lime,onPrimary=bg,background=bg,surface=surface,secondaryContainer=Color(0xFF36472B),onSecondaryContainer=lime,surfaceVariant=Color(0xFF303830),onSurfaceVariant=Color(0xFFC1CABE))){Screen()}}
  }
  @Composable private fun Screen(){
   val scope=rememberCoroutineScope()
@@ -66,6 +73,8 @@ class MainActivity:ComponentActivity(){
   var version by remember{mutableStateOf<Any>(JSONObject.NULL)}
   var pinDialog by remember{mutableStateOf(false)}
   var pin by remember{mutableStateOf("")}
+  var pinError by remember{mutableStateOf("")}
+  var pinBusy by remember{mutableStateOf(false)}
   var selected by remember{mutableStateOf("")}
   var seconds by remember{mutableIntStateOf(90)}
   var running by remember{mutableStateOf(false)}
@@ -93,7 +102,7 @@ class MainActivity:ComponentActivity(){
    }.orEmpty()
   }
   suspend fun refresh(reset:Boolean){
-   data=api("/api/data");editable=data.optBoolean("editable")
+   val incoming=api("/api/data");require(incoming.arr("workouts").length()>0){"Сервер не вернул программу тренировок"};data=incoming;editable=data.optBoolean("editable");prefs.edit().putString("cache",data.toString()).apply()
    if(reset)load(workout)
   }
   fun task(block:suspend ()->Unit){if(busy)return;busy=true;message="";scope.launch{try{block()}catch(e:Exception){message=e.message?:"Ошибка соединения"}finally{busy=false}}}
@@ -104,10 +113,11 @@ class MainActivity:ComponentActivity(){
    try{refresh(true);prefs.edit().putString("cache",data.toString()).apply()}catch(e:Exception){message="Нет соединения. "+(e.message?:"")}finally{busy=false}
   }
   LaunchedEffect(running){while(running&&seconds>0){delay(1000);seconds--};if(seconds==0)running=false}
-  Scaffold(containerColor=bg,bottomBar={NavigationBar(containerColor=surface){listOf("Тренировка","История","Прогресс").forEachIndexed{i,t->NavigationBarItem(selected=tab==i,onClick={tab=i},icon={Text(listOf("▤","◷","▥")[i])},label={Text(t)})}}}){padding->
+  Scaffold(containerColor=bg,bottomBar={NavigationBar(containerColor=surface,modifier=Modifier.height(88.dp)){listOf("Тренировка","История","Прогресс").forEachIndexed{i,t->NavigationBarItem(selected=tab==i,onClick={tab=i},icon={MenuIcon(i,if(tab==i)lime else Color(0xFFB9C2B7))},label={Text(t,fontSize=14.sp)},colors=NavigationBarItemDefaults.colors(indicatorColor=Color(0xFF36472B),selectedTextColor=lime,unselectedTextColor=Color(0xFFB9C2B7)))}}}){padding->
    LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal=16.dp),verticalArrangement=Arrangement.spacedBy(12.dp),contentPadding=PaddingValues(top=16.dp,bottom=20.dp)){
-    item{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("МОИ ТРЕНИРОВКИ",color=lime,style=MaterialTheme.typography.titleMedium);TextButton(onClick={if(editable)task{api("/api/lock",JSONObject());token="";prefs.edit().remove("token").remove("expires").apply();refresh(false)}else{pin="";pinDialog=true}}){Text(if(editable)"Выйти" else "PIN")}}}
-    if(busy)item{LinearProgressIndicator(Modifier.fillMaxWidth())}
+    item{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("МОИ ТРЕНИРОВКИ",color=lime,style=MaterialTheme.typography.titleMedium);TextButton(onClick={if(editable)task{api("/api/lock",JSONObject());token="";prefs.edit().remove("token").remove("expires").apply();refresh(false)}else{pin="";pinError="";pinDialog=true}}){Text(if(editable)"Выйти" else "PIN")}}}
+    if(busy)item{Text("Загрузка тренировок…");LinearProgressIndicator(Modifier.fillMaxWidth())}
+    if(!busy&&data.arr("workouts").length()==0)item{Text("Тренировки пока не загружены");Button(onClick={task{refresh(true)}}){Text("Повторить подключение")}}
     if(message.isNotBlank())item{Text(message,color=lime);TextButton(onClick={task{refresh(true);prefs.edit().putString("cache",data.toString()).apply()}}){Text("Обновить")}}
     when(tab){
      0->{
@@ -143,6 +153,17 @@ class MainActivity:ComponentActivity(){
     }
    }
   }
-  if(pinDialog)AlertDialog(onDismissRequest={pinDialog=false},title={Text("Введи PIN")},text={OutlinedTextField(pin,{if(it.length<=4&&it.all(Char::isDigit))pin=it},label={Text("4 цифры")},visualTransformation=PasswordVisualTransformation(),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword))},confirmButton={TextButton(enabled=pin.length==4&&!busy,onClick={task{val login=api("/api/unlock",JSONObject().put("pin",pin).put("remember",true).put("deviceName","Android "+android.os.Build.MODEL));token=login.getString("deviceToken");prefs.edit().putString("token",token).putLong("expires",login.optLong("expires")).apply();pin="";pinDialog=false;refresh(false)}}){Text("Открыть")}},dismissButton={TextButton(onClick={pinDialog=false}){Text("Отмена")}})
+  if(pinDialog)AlertDialog(onDismissRequest={if(!pinBusy)pinDialog=false},title={Text("Введи PIN")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(pin,{if(it.length<=4&&it.all(Char::isDigit)){pin=it;pinError=""}},label={Text("4 цифры")},visualTransformation=PasswordVisualTransformation(),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword),singleLine=true,enabled=!pinBusy);if(pinBusy)LinearProgressIndicator(Modifier.fillMaxWidth());if(pinError.isNotBlank())Text(pinError,color=MaterialTheme.colorScheme.error)}},confirmButton={TextButton(enabled=pin.length==4&&!pinBusy&&!busy,onClick={pinBusy=true;pinError="";scope.launch{try{val login=api("/api/unlock",JSONObject().put("pin",pin).put("remember",true).put("deviceName","Android "+android.os.Build.MODEL));token=login.getString("deviceToken");prefs.edit().putString("token",token).putLong("expires",login.optLong("expires")).apply();refresh(exercises.isEmpty());require(editable){"Сервер не подтвердил доступ к редактированию"};pin="";pinDialog=false;message=""}catch(e:Exception){pinError=e.message?:"Ошибка подключения"}finally{pinBusy=false}}}){Text(if(pinBusy)"Проверка…" else "Открыть")}},dismissButton={TextButton(enabled=!pinBusy,onClick={pinDialog=false}){Text("Отмена")}})
+ }
+}
+@Composable private fun MenuIcon(index:Int,color:Color){
+ Canvas(Modifier.size(28.dp)){
+  val w=size.width;val h=size.height;val stroke=2.dp.toPx()
+  fun line(x:Float,y:Float,x2:Float,y2:Float){drawLine(color,Offset(x*w,y*h),Offset(x2*w,y2*h),stroke,StrokeCap.Round)}
+  when(index){
+   0->{line(.17f,.5f,.83f,.5f);line(.25f,.23f,.25f,.77f);line(.75f,.23f,.75f,.77f);line(.1f,.36f,.1f,.64f);line(.9f,.36f,.9f,.64f)}
+   1->{drawCircle(color,w*.38f,style=androidx.compose.ui.graphics.drawscope.Stroke(stroke));line(.5f,.27f,.5f,.5f);line(.5f,.5f,.68f,.6f)}
+   else->{line(.12f,.12f,.12f,.87f);line(.12f,.87f,.92f,.87f);line(.24f,.7f,.46f,.46f);line(.46f,.46f,.63f,.58f);line(.63f,.58f,.9f,.23f)}
+  }
  }
 }
