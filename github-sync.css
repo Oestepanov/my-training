@@ -1,0 +1,15 @@
+.sync-status{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px;color:var(--muted)}
+.sync-status .text-button{flex:none;color:var(--lime);min-height:44px;padding:8px}
+.sync-status[data-state=synced]{color:#c4d6af}
+.sync-status[data-state=offline],.sync-status[data-state=conflict]{color:#f2cb83}
+.sync-dialog{width:560px;max-height:calc(100dvh - 40px);overflow-y:auto}
+.sync-dialog p{line-height:1.5}.sync-dialog label{font-size:14px;margin:18px 0}
+.sync-dialog input{display:block;width:100%;min-height:48px;margin-top:8px;padding:12px;background:#121612;border:1px solid #4e5d43;border-radius:8px;color:var(--text);font-size:16px}
+.sync-dialog textarea{font-size:16px;word-break:break-all}
+.sync-dialog summary{padding:14px 0;color:var(--lime);cursor:pointer;font-size:16px}
+.sync-dialog li{margin:12px 0;font-size:14px;color:var(--muted)}
+.sync-dialog .button{margin:8px 0;width:100%;display:flex;align-items:center;justify-content:center;text-align:center;min-height:48px}
+.sync-dialog .token-link{font-size:14px}.sync-dialog .sync-storage-note{font-size:13px}
+.sync-conflict{border-top:1px solid var(--line);padding-top:12px;margin-top:20px}
+#disconnectSync{display:block;margin:20px auto 0;min-height:44px}
+@media(max-width:650px){.sync-dialog{padding:28px 20px}.sync-dialog h2{font-size:25px}.sync-status{font-size:13px}.access{max-width:180px}.access .lock-icon{display:none}}
