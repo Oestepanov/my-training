@@ -3,3 +3,31 @@
 
 .history-trash-toggle{margin:0 0 20px}
 .device-label{margin-top:18px}.device-label input{display:block;width:100%;height:44px;padding:10px 12px;margin-top:8px;border:1px solid #4e5d43;border-radius:8px;background:#111611;color:var(--text);font-size:16px}.remember-label{display:flex;gap:10px;align-items:center;font-size:14px;margin:17px 0;line-height:1.4}.remember-label input{accent-color:var(--lime);width:20px;height:20px;flex-shrink:0}.device-card{border-top:1px solid var(--line);padding:18px 0;display:flex;justify-content:space-between;align-items:center;gap:12px}.device-card strong{font-size:15px}.device-card p{font-size:13px;margin:5px 0 0}.device-card .button{font-size:13px}.device-current{display:block;color:var(--lime);font-size:12px;font-weight:400}#devicesDialog{width:500px}
+
+
+/* Keep mobile workout cards aligned even when their descriptions wrap differently. */
+.workout-option{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start}
+.workout-option .picker-top{align-items:flex-start}
+.workout-option>p{flex:1}
+.workout-option>span{display:block}
+@media(max-width:900px){
+  .mobile-nav{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;padding:7px;background:rgba(27,34,26,.97);border:1px solid #3b4635;border-radius:24px;box-shadow:0 10px 34px #0008;backdrop-filter:blur(18px)}
+  .mobile-nav button{min-width:0;min-height:76px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:10px 4px;border-radius:18px;color:#b1bcaa;font-size:14px;font-weight:600;line-height:1.2;transition:background .18s,color .18s}
+  .mobile-nav .nav-icon{display:block;width:28px;height:28px;flex:none}
+  .mobile-nav button .nav-label{font-size:14px;line-height:1.2;white-space:nowrap}
+  .mobile-nav button.active{background:var(--lime);color:var(--ink);box-shadow:inset 0 1px 0 #ffffff40}
+  .mobile-nav button:active{background:#303d29}
+  .mobile-nav button.active:active{background:#bce267}
+  footer{padding-bottom:calc(132px + env(safe-area-inset-bottom,0px))}
+  .toast{bottom:calc(116px + env(safe-area-inset-bottom,0px))}
+  html{scroll-padding-bottom:calc(116px + env(safe-area-inset-bottom,0px))}
+}
+@media(max-width:650px){
+  .workout-picker{align-items:stretch;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .workout-option{gap:7px}
+  .workout-option .picker-top{min-height:2.6em;line-height:1.3}
+  .workout-option strong{line-height:1.3}
+  .workout-option>p{min-height:2.8em;margin:0;line-height:1.4}
+  .workout-option>span{line-height:1.4}
+}
+@media(prefers-reduced-motion:reduce){.mobile-nav button{transition:none}}
