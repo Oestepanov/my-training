@@ -11,16 +11,16 @@
 .workout-option>p{flex:1}
 .workout-option>span{display:block}
 @media(max-width:900px){
-  .mobile-nav{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;padding:7px;background:rgba(27,34,26,.97);border:1px solid #3b4635;border-radius:24px;box-shadow:0 10px 34px #0008;backdrop-filter:blur(18px)}
-  .mobile-nav button{min-width:0;min-height:76px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:10px 4px;border-radius:18px;color:#b1bcaa;font-size:14px;font-weight:600;line-height:1.2;transition:background .18s,color .18s}
-  .mobile-nav .nav-icon{display:block;width:28px;height:28px;flex:none}
+  .mobile-nav{left:10px;right:10px;bottom:calc(8px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:5px;background:rgba(27,34,26,.97);border:1px solid #3b4635;border-radius:18px;box-shadow:0 10px 34px #0008;backdrop-filter:blur(18px)}
+  .mobile-nav button{min-width:0;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:4px;border-radius:13px;color:#b1bcaa;font-size:14px;font-weight:600;line-height:1.2;transition:background .18s,color .18s}
+  .mobile-nav .nav-icon{display:block;width:20px;height:20px;flex:none}
   .mobile-nav button .nav-label{font-size:14px;line-height:1.2;white-space:nowrap}
   .mobile-nav button.active{background:var(--lime);color:var(--ink);box-shadow:inset 0 1px 0 #ffffff40}
   .mobile-nav button:active{background:#303d29}
   .mobile-nav button.active:active{background:#bce267}
-  footer{padding-bottom:calc(132px + env(safe-area-inset-bottom,0px))}
-  .toast{bottom:calc(116px + env(safe-area-inset-bottom,0px))}
-  html{scroll-padding-bottom:calc(116px + env(safe-area-inset-bottom,0px))}
+  footer{padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))}
+  .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+  html{scroll-padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 }
 @media(max-width:650px){
   .workout-picker{align-items:stretch;grid-template-columns:repeat(3,minmax(0,1fr))}
