@@ -11,18 +11,30 @@ function renderProgramRows(){
  programDraft.forEach((exercise,index)=>{
   const row=document.createElement('div');row.className='program-row';row.dataset.programExercise=exercise.id;
   const label=document.createElement('label');label.textContent='Упражнение '+(index+1);
-  const input=document.createElement('input');input.value=exercise.name;input.required=true;input.maxLength=120;
-  input.placeholder='Например, жим гантелей';input.autocomplete='off';input.setAttribute('aria-label','Название упражнения '+(index+1));
-  input.oninput=()=>{programDraft[index].name=input.value;};label.append(input);row.append(label);
+  const select=document.createElement('select');select.required=true;select.setAttribute('aria-label','Выбор упражнения '+(index+1));
+  const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Выбери упражнение';placeholder.disabled=true;select.append(placeholder);
+  for(const known of TrainingGitHub.catalog){
+   const option=document.createElement('option');option.value=known.id;option.textContent=known.name;
+   option.disabled=programDraft.some((e,i)=>i!==index&&e.id===known.id);select.append(option);
+  }
+  select.value=TrainingGitHub.exerciseInfo(exercise)?.id||'';
+  select.onchange=()=>{const known=TrainingGitHub.exerciseInfo(select.value);programDraft[index]={id:known.id,name:known.name};renderProgramRows();$('#programRows').children[index].querySelector('select').focus();};
+  label.append(select);row.append(label);
+  const known=TrainingGitHub.exerciseInfo(exercise);
+  if(known){
+   const muscles=document.createElement('p');muscles.className='program-muscles';muscles.textContent=known.muscles;
+   const description=document.createElement('p');description.className='program-description muted';description.textContent=known.description;
+   const previous=document.createElement('p');previous.className='program-previous';
+   const result=latest(known.id),performed=result?doneSets(result):[];
+   previous.textContent=performed.length?'Последний результат: '+performed.map(s=>number(s.weight)+' кг × '+s.reps).join(' · ')+' — '+date(result.date):'Прошлых результатов пока нет';
+   row.append(muscles,description,previous);
+  }
   const actions=document.createElement('div');actions.className='program-row-actions';
-  const replace=document.createElement('button');replace.type='button';replace.className='text-button';replace.textContent='Заменить';replace.setAttribute('aria-label','Заменить упражнение '+(index+1));
-  replace.onclick=()=>{programDraft[index]={id:'ex-'+crypto.randomUUID(),name:''};renderProgramRows();$('#programRows').children[index].querySelector('input').focus();};
-  const remove=document.createElement('button');remove.type='button';remove.className='text-button danger';remove.textContent='Убрать';remove.setAttribute('aria-label','Убрать упражнение '+(index+1));
-  remove.disabled=programDraft.length===1;
-  remove.onclick=()=>{programDraft.splice(index,1);renderProgramRows();};
-  actions.append(replace,remove);row.append(actions);host.append(row);
+  const remove=document.createElement('button');remove.type='button';remove.className='text-button danger';remove.textContent='Убрать из тренировки';remove.setAttribute('aria-label','Убрать упражнение '+(index+1));
+  remove.disabled=programDraft.length===1;remove.onclick=()=>{programDraft.splice(index,1);renderProgramRows();};
+  actions.append(remove);row.append(actions);host.append(row);
  });
- $('#addExercise').disabled=programDraft.length>=40;
+ $('#addExercise').disabled=programDraft.length>=TrainingGitHub.catalog.length;
 }
 $('#editProgram').onclick=()=>{
  if(!state.editable)return showSync();
@@ -31,25 +43,24 @@ $('#editProgram').onclick=()=>{
  $('#programTitle').textContent=workout.name;$('#programError').textContent='';renderProgramRows();$('#programDialog').showModal();
 };
 $('#addExercise').onclick=()=>{
- if(programDraft.length>=40)return;
- programDraft.push({id:'ex-'+crypto.randomUUID(),name:''});renderProgramRows();
- $('#programRows').lastElementChild.querySelector('input').focus();
+ if(programDraft.length>=TrainingGitHub.catalog.length)return;
+ programDraft.push({id:'',name:''});renderProgramRows();
+ $('#programRows').lastElementChild.querySelector('select').focus();
 };
 $('#closeProgram').onclick=closeProgram;$('#cancelProgram').onclick=closeProgram;
 $('#programDialog').addEventListener('cancel',event=>{event.preventDefault();closeProgram();});
 $('#programForm').onsubmit=async event=>{
  event.preventDefault();if(programSaving||!$('#programForm').reportValidity())return;
- const draft=programDraft.map(e=>({...e,name:e.name.trim()}));
- if(draft.some(e=>!e.name)){$('#programError').textContent='Укажи название каждого упражнения.';return;}
+ const draft=programDraft.map(e=>({id:e.id,name:e.name}));
  programSaving=true;$('#programError').textContent='';
- $$('#programForm button, #programForm input, #closeProgram').forEach(e=>e.disabled=true);
+ $$('#programForm button, #programForm select, #closeProgram').forEach(e=>e.disabled=true);
  try{
   const result=await githubStore.saveProgram(programWorkoutId,draft,programBase);
   await refresh();renderWorkoutForState();$('#programDialog').close();
   toast(githubStore.status.kind==='conflict'?'Программа сохранена на устройстве. Выбери версию в синхронизации.':result.synced?'Программа сохранена и синхронизирована.':'Программа сохранена на устройстве. Синхронизируется после восстановления связи.');
  }catch(error){$('#programError').textContent=error.message;}
  finally{
-  programSaving=false;$$('#programForm button, #programForm input, #closeProgram').forEach(e=>e.disabled=false);
+  programSaving=false;$$('#programForm button, #programForm select, #closeProgram').forEach(e=>e.disabled=false);
   if($('#programDialog').open)renderProgramRows();renderSyncStatus();
  }
 };
