@@ -31,7 +31,6 @@ class MainActivity:Activity(){
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
   window.statusBarColor=Color.rgb(17,20,17);window.navigationBarColor=Color.rgb(17,20,17)
-  if(Build.VERSION.SDK_INT>=30)window.insetsController?.setSystemBarsAppearance(0,WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS)
   val root=FrameLayout(this).apply{setBackgroundColor(Color.rgb(17,20,17))}
   root.setOnApplyWindowInsetsListener{view,insets->
    if(Build.VERSION.SDK_INT>=30){
@@ -41,6 +40,9 @@ class MainActivity:Activity(){
    insets
   }
   setContentView(root)
+  root.post{
+   if(Build.VERSION.SDK_INT>=30)window.insetsController?.setSystemBarsAppearance(0,WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS)
+  }
   WebView.setWebContentsDebuggingEnabled(false)
   web=WebView(this).apply{
    tag="training-webview";setBackgroundColor(Color.rgb(17,20,17))
