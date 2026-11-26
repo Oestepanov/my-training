@@ -113,4 +113,45 @@ class SmokeTest{
   manager.cancel(41)
   evaluate("document.querySelector('#timerReset').click();true")
  }
+ private fun waitForJavascript(expression:String){
+  val until=SystemClock.elapsedRealtime()+15000
+  while(SystemClock.elapsedRealtime()<until){if(evaluate(expression)=="true")return;SystemClock.sleep(100)}
+  fail("JavaScript condition failed: "+expression+"; program error: "+evaluate("document.querySelector('#programError')?.textContent"))
+ }
+ @Test fun testProgramEditorSynchronizesAndKeepsHistory(){
+  ready()
+  evaluate("""
+   window.programTestReady=false;
+   (async()=>{
+    const T=TrainingGitHub,key=T.bytesTo64(crypto.getRandomValues(new Uint8Array(32)));
+    const initial=structuredClone(state.workouts);window.programOriginal=structuredClone(initial[0].exercises);
+    const old={id:'program-history',version:1,workoutId:initial[0].id,date:'2026-10-01',exercises:initial[0].exercises.map(e=>({exerciseId:e.id,name:e.name,completed:true,sets:1,weight:10,reps:12,setDetails:[{weight:10,reps:12,done:true}]}))};
+    window.programEnvelope=await T.encrypt({schemaVersion:3,workouts:initial,entries:[old]},key);
+    const memory=new Map();githubStore.storage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+    githubStore.fetch=async(url,options)=>{
+     if(options.method==='PUT')window.programEnvelope=JSON.parse(new TextDecoder().decode(T.from64(JSON.parse(options.body).content)));
+     return {ok:true,json:async()=>options.method==='PUT'?{}:{encoding:'base64',sha:'mock',content:T.bytesTo64(new TextEncoder().encode(JSON.stringify(window.programEnvelope)))}};
+    };
+    await githubStore.connect({token:'ghp_'+('p'.repeat(36)),key});await refresh();renderWorkout();window.programTestReady=true;
+   })();true
+  """.trimIndent())
+  waitForJavascript("window.programTestReady")
+  evaluate("document.querySelector('#editProgram').click();const first=document.querySelector('#programRows input');first.value='Жим штанги тест';first.dispatchEvent(new Event('input'));document.querySelector('#addExercise').click();const last=document.querySelector('#programRows').lastElementChild.querySelector('input');last.value='Новое упражнение';last.dispatchEvent(new Event('input'));true")
+  assertEquals("true",evaluate("document.querySelector('#programDialog').open"))
+  SystemClock.sleep(250)
+  val screenshot=instrumentation.uiAutomation.takeScreenshot()
+  if(screenshot!=null){File(activity.getExternalFilesDir(null),"program-editor.png").outputStream().use{screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};screenshot.recycle()}
+  evaluate("document.querySelector('#programForm').requestSubmit();true")
+  waitForJavascript("!document.querySelector('#programDialog').open")
+  assertEquals("true",evaluate("state.workouts[0].exercises.length===window.programOriginal.length+1 && state.workouts[0].exercises[0].name==='Жим штанги тест'"))
+  assertEquals("true",evaluate("state.history[0].exercises[0].name===window.programOriginal[0].name"))
+  evaluate("startEdit('program-history');document.querySelector('#editProgram').click();document.querySelector('#programRows .program-row-actions button').click();const renamed=document.querySelector('#programRows input');renamed.value='Другое упражнение';renamed.dispatchEvent(new Event('input'));document.querySelectorAll('#programRows .program-row')[1].querySelectorAll('button')[1].click();document.querySelector('#programForm').requestSubmit();true")
+  waitForJavascript("!document.querySelector('#programDialog').open")
+  assertEquals("true",evaluate("state.workouts[0].exercises.length===window.programOriginal.length && state.workouts[0].exercises[0].id!==window.programOriginal[0].id && state.workouts[0].archivedExercises.some(e=>e.id===window.programOriginal[0].id)"))
+  assertEquals("true",evaluate("document.querySelectorAll('#exerciseList .exercise').length===window.programOriginal.length && document.querySelector('#exerciseList h3').textContent===window.programOriginal[0].name"))
+  evaluate("renderProgress();true")
+  assertEquals("true",evaluate("[...document.querySelectorAll('#exerciseSelect option')].some(e=>e.value===window.programOriginal[0].id)"))
+  evaluate("window.programRemoteOk=false;TrainingGitHub.decrypt(window.programEnvelope,githubStore.settings.key).then(d=>window.programRemoteOk=d.workouts[0].exercises[0].name==='Другое упражнение'&&d.entries[0].exercises[0].name===window.programOriginal[0].name);true")
+  waitForJavascript("window.programRemoteOk")
+ }
 }

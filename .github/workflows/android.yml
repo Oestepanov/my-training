@@ -21,6 +21,7 @@ jobs:
           gradle-version: '8.9'
       - name: Build Android packages
         run: |
+          node --test program-sync.test.cjs
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
           gradle -p android :app:assembleRelease :app:assembleDebugAndroidTest
       - name: Package unsigned APK and signing tool
@@ -45,7 +46,9 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: gradle -p android :app:connectedDebugAndroidTest
+          script: |
+            gradle -p android :app:connectedDebugAndroidTest
+            adb pull /sdcard/Android/data/ru.mytraining.diary/files/program-editor.png android/app/build/reports/androidTests/program-editor.png
       - name: Keep test results
         if: always()
         uses: actions/upload-artifact@v4
