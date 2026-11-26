@@ -108,3 +108,11 @@ test('every selectable exercise has muscles and a description; unknown historica
  assert.equal(new Set(T.catalog.map(e=>e.id)).size,14);for(const e of T.catalog){assert.ok(e.muscles);assert.ok(e.description);}
  assert.equal(T.exerciseInfo({id:'ex-old',name:'Пулловер'}).id,'pullover');assert.equal(T.exerciseInfo({id:'ex-other',name:'Неизвестное упражнение'}),null);
 });
+test('an existing active session accepts exercises added to its current program',async()=>{
+ const {client,remote}=await setup(),a=await client();
+ await a.store.mutate('save',{id:'active-current',workoutId:'2',date:'2026-11-26',exercises:[{exerciseId:'lat-pulldown',setDetails:[{weight:50,reps:12,done:true}]}]});
+ await a.store.saveProgram('2',[...list(a.store),ex('pullover')],list(a.store));
+ const current=a.store.data().history.find(s=>s.id==='active-current');
+ await a.store.mutate('save',{...current,exercises:[...current.exercises,{exerciseId:'pullover',setDetails:[{weight:8,reps:10,done:true}]}]});
+ assert.equal(remote.read().entries.find(s=>s.id==='active-current').exercises.length,2);
+});

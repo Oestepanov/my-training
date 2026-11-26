@@ -176,8 +176,8 @@
    if(!workout||!/^\d{4}-\d{2}-\d{2}$/.test(value.date)||!Number.isFinite(Date.parse(value.date))||new Date(value.date).toISOString().slice(0,10)!==value.date)throw new Error('Проверь дату и номер тренировки.');
    const current=this.doc.entries.find(e=>e.id===value.id);
    if(current&&current.workoutId!==workout.id)throw new Error('Нельзя изменить номер сохранённой тренировки.');
-   const known=current?current.exercises.map(e=>({id:e.exerciseId,name:e.name})):[...workout.exercises,...(workout.archivedExercises||[])];
-   if(typeof value.id!=='string'||!/^[-a-zA-Z0-9]{1,100}$/.test(value.id)||!Array.isArray(value.exercises)||!value.exercises.length||value.exercises.length>200||(current&&value.exercises.length!==current.exercises.length))throw new Error('Неверная запись тренировки.');
+   const known=[...(current?current.exercises.map(e=>({id:e.exerciseId,name:e.name})):[]),...workout.exercises,...(workout.archivedExercises||[])];
+   if(typeof value.id!=='string'||!/^[-a-zA-Z0-9]{1,100}$/.test(value.id)||!Array.isArray(value.exercises)||!value.exercises.length||value.exercises.length>200)throw new Error('Неверная запись тренировки.');
    const ids=new Set();const exercises=value.exercises.map(item=>{
     const ex=known.find(e=>e.id===item.exerciseId);
     if(!ex||ids.has(ex.id))throw new Error('Список упражнений изменился. Обнови программу; черновик сохранён.');

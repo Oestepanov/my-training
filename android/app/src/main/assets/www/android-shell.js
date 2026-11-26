@@ -3,6 +3,9 @@
  'use strict';
  const bridge=window.TrainingAndroid;if(!bridge)return;
  const post=data=>bridge.postMessage(JSON.stringify(data));
+ let nativeDraftsLoaded=false;
+ const saveNativeDrafts=()=>{if(nativeDraftsLoaded&&typeof drafts!=='undefined')post({type:'saveDrafts',data:drafts.serialize()});};
+ window.addEventListener('training-drafts-changed',saveNativeDrafts);
  const exportButton=document.querySelector('#exportButton');
  exportButton.onclick=()=>{
   if(!state.history.length)return toast('В дневнике пока нет сохранённых тренировок.');
@@ -30,6 +33,12 @@
  start.onclick=()=>{webStart();post(timerEnd?{type:'startTimer',deadline:timerEnd}:{type:'cancelTimer'});};
  reset.onclick=()=>{webReset();post({type:'cancelTimer'});};
  window.TrainingAndroidApp={
+  get draftsReady(){return nativeDraftsLoaded;},
+  restoreDrafts(raw){
+   if(nativeDraftsLoaded)return;nativeDraftsLoaded=true;
+   if(typeof restoreNativeDrafts==='function')restoreNativeDrafts(raw);
+   saveNativeDrafts();
+  },
   restoreTimer(deadline){
    if(deadline>0){
     clearInterval(timerInterval);timerEnd=deadline;

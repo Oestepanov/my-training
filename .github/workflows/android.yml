@@ -21,7 +21,7 @@ jobs:
           gradle-version: '8.9'
       - name: Build Android packages
         run: |
-          node --test program-sync.test.cjs
+          node --test program-sync.test.cjs training-drafts.test.cjs
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
           gradle -p android :app:assembleRelease :app:assembleDebugAndroidTest
       - name: Package unsigned APK and signing tool

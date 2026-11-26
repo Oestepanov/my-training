@@ -158,4 +158,40 @@ class SmokeTest{
   evaluate("const legacy={id:'legacy-pull',version:1,workoutId:'2',date:today(),exercises:[{exerciseId:'ex-old-random',name:'Пулловер',completed:false,sets:0,setDetails:Array.from({length:3},()=>({weight:0,reps:12,done:false}))}]};state.history.unshift(legacy);workoutId='2';editId=legacy.id;renderWorkout(legacy);true")
   assertEquals("true",evaluate("document.querySelector('#exerciseList .weight').value==='8' && document.querySelector('#exerciseList .reps').value==='10' && !document.querySelector('#exerciseList .done-check').checked"))
  }
+ @Test fun testLocalDraftRecoversFromNativeBackupWithoutSubmitting(){
+  ready();waitForJavascript("window.TrainingAndroidApp.draftsReady===true")
+  try{
+   evaluate("drafts.clearAll();dirty=false;editId=null;editHistory=false;switchWorkout('2');state.editable=true;updateAccess();window.draftNetworkCalls=0;githubStore.api=async()=>{window.draftNetworkCalls++;throw Error('No request expected')};const weight=document.querySelector('#exerciseList .weight');weight.value='47.5';weight.dispatchEvent(new Event('input',{bubbles:true}));const reps=document.querySelector('#exerciseList .reps');reps.value='11';reps.dispatchEvent(new Event('input',{bubbles:true}));const done=document.querySelector('#exerciseList .done-check');done.checked=true;done.dispatchEvent(new Event('input',{bubbles:true}));const rows=document.querySelectorAll('#exerciseList .exercise:first-child .set-row');rows[1].querySelector('.weight').value='';rows[1].querySelector('.reps').value='';rows[1].querySelector('.weight').dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#exerciseList .add-set').click();document.querySelector('#notes').value='Продолжить после перезапуска';document.querySelector('#notes').dispatchEvent(new Event('input'));true")
+   assertEquals("true",evaluate("window.draftNetworkCalls===0 && githubStore.pending.length===0 && state.history.length===0 && !document.querySelector('#draftBanner').hidden"))
+   val file=File(activity.filesDir,"training-drafts-v3.json")
+   var until=SystemClock.elapsedRealtime()+10000
+   while(SystemClock.elapsedRealtime()<until&&(!file.exists()||!file.readText().contains("Продолжить после перезапуска")))SystemClock.sleep(100)
+   assertTrue("Native backup did not receive the draft",file.exists()&&file.readText().contains("Продолжить после перезапуска"))
+   evaluate("dirty=false;localStorage.removeItem(TrainingDrafts.key);true")
+   activityRule.scenario.recreate();activityRule.scenario.onActivity{activity=it};ready();waitForJavascript("window.TrainingAndroidApp.draftsReady===true && !!drafts.active()")
+   assertEquals("true",evaluate("workoutId==='2' && document.querySelector('#exerciseList .weight').value==='47.5' && document.querySelector('#exerciseList .reps').value==='11' && document.querySelector('#exerciseList .done-check').checked && document.querySelector('#notes').value==='Продолжить после перезапуска'"))
+   assertEquals("true",evaluate("document.querySelectorAll('#exerciseList .exercise:first-child .set-row').length===4 && document.querySelectorAll('#exerciseList .exercise:first-child .weight')[1].value==='' && document.querySelectorAll('#exerciseList .exercise:first-child .reps')[1].value==='' && state.history.length===0 && githubStore.pending.length===0"))
+   evaluate("const restored=drafts.active().session;restored.id='history-draft-test';restored.version=7;restored.notes='Правка сохранённой тренировки';drafts.save(restored,{editing:true,mode:'history'});dirty=false;true")
+   until=SystemClock.elapsedRealtime()+10000
+   while(SystemClock.elapsedRealtime()<until&&!file.readText().contains("history-draft-test"))SystemClock.sleep(100)
+   assertTrue(file.readText().contains("history-draft-test"))
+   evaluate("localStorage.removeItem(TrainingDrafts.key);true")
+   activityRule.scenario.recreate();activityRule.scenario.onActivity{activity=it};ready();waitForJavascript("window.TrainingAndroidApp.draftsReady===true && editId==='history-draft-test'")
+   assertEquals("true",evaluate("editVersion===7 && editHistory && document.querySelector('#notes').value==='Правка сохранённой тренировки' && document.querySelector('#exerciseList .done-check').checked"))
+  }finally{evaluate("drafts.clearAll();dirty=false;editId=null;editVersion=null;editHistory=false;workoutId='1';renderWorkout();true")}
+ }
+ @Test fun testRemovedExerciseDisappearsFromActivePlanAndHistoryStaysIntact(){
+  ready();waitForJavascript("window.TrainingAndroidApp.draftsReady===true")
+  try{
+   evaluate("drafts.clearAll();dirty=false;editId=null;editVersion=null;editHistory=false;const original=structuredClone(state.workouts.find(w=>w.id==='3'));window.removedSource={id:'today-active',version:1,workoutId:'3',date:today(),exercises:original.exercises.map(e=>({exerciseId:e.id,name:e.name,completed:e.id==='pullover',sets:e.id==='pullover'?3:0,setDetails:Array.from({length:3},()=>({weight:e.id==='pullover'?8:0,reps:e.id==='pullover'?10:12,done:e.id==='pullover'}))}))};state.workouts.find(w=>w.id==='3').exercises=original.exercises.filter(e=>e.id!=='pullover');state.history=[structuredClone(window.removedSource)];workoutId='3';renderWorkout();true")
+   assertEquals("true",evaluate("!document.querySelector('#exerciseList [data-exercise=pullover]') && document.querySelectorAll('#exerciseList .exercise').length===4 && document.querySelector('#totalCount').textContent==='/ 12'"))
+   assertEquals("true",evaluate("collect().exercises.find(e=>e.exerciseId==='pullover').setDetails.every(s=>s.done && s.weight===8 && s.reps===10) && state.history[0].exercises.some(e=>e.exerciseId==='pullover')"))
+   evaluate("state.editable=true;updateAccess();const input=document.querySelector('#exerciseList .weight');input.value='25';input.dispatchEvent(new Event('input',{bubbles:true}));renderWorkoutForState();true")
+   assertEquals("true",evaluate("!document.querySelector('#exerciseList [data-exercise=pullover]') && document.querySelector('#exerciseList .weight').value==='25' && drafts.active().session.exercises.some(e=>e.exerciseId==='pullover')"))
+   evaluate("startEdit('today-active');true")
+   // Explicit history editing retains the actual exercises performed that day.
+   assertEquals("true",evaluate("!!document.querySelector('#exerciseList [data-exercise=pullover]') && document.querySelectorAll('#exerciseList .exercise').length===5"))
+  }finally{evaluate("drafts.clearAll();dirty=false;editId=null;editVersion=null;editHistory=false;true")}
+ }
+
 }

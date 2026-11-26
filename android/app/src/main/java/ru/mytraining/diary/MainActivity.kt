@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.*
 import android.provider.Settings
 import android.util.Base64
+import android.util.AtomicFile
 import android.view.*
 import android.webkit.*
 import android.widget.*
@@ -28,6 +29,7 @@ class MainActivity:Activity(){
  private var exportingName=""
  private val pendingExcel get()=File(cacheDir,"pending-training-export.xlsx")
  private var pageReady=false
+ private val draftFile get()=AtomicFile(File(filesDir,"training-drafts-v3.json"))
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
   window.statusBarColor=Color.rgb(17,20,17);window.navigationBarColor=Color.rgb(17,20,17)
@@ -77,7 +79,7 @@ class MainActivity:Activity(){
    }
    override fun onPageFinished(view:WebView,url:String){
     if(!url.startsWith(localOrigin+"/assets/www/"))return
-    pageReady=true;restoreTimer()
+    pageReady=true;restoreTimer();restoreDrafts()
    }
    override fun onReceivedError(view:WebView,request:WebResourceRequest,error:WebResourceError){
     if(request.isForMainFrame)toast("Не удалось открыть интерфейс. Закрой и снова открой приложение.")
@@ -97,7 +99,15 @@ class MainActivity:Activity(){
  }
  private fun handleMessage(data:JSONObject){
   when(data.optString("type")){
-   "ready"->restoreTimer()
+   "ready"->{restoreTimer();restoreDrafts()}
+   "saveDrafts"->{
+    val value=data.optString("data");require(value.length<=2_000_000)
+    val parsed=JSONObject(value);require(parsed.optInt("version")==3&&parsed.has("items")&&parsed.has("deleted"))
+    val previousClock=try{JSONObject(String(draftFile.readFully(),Charsets.UTF_8)).optLong("clock")}catch(_:Exception){0L}
+    if(parsed.optLong("clock")<previousClock)return
+    val output=draftFile.startWrite()
+    try{output.write(value.toByteArray(Charsets.UTF_8));draftFile.finishWrite(output)}catch(e:Exception){draftFile.failWrite(output);throw e}
+   }
    "copy"->{val text=data.optString("text");require(text.length<=20000);getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Подключение дневника",text));toast("Код скопирован")}
    "openExternal"->openExternal(Uri.parse(data.optString("url")))
    "export"->saveExcel(data)
@@ -155,6 +165,15 @@ class MainActivity:Activity(){
   if(!pageReady)return
   val at=RestAlarm.deadline(this)
   web.evaluateJavascript("window.TrainingAndroidApp && window.TrainingAndroidApp.restoreTimer("+at+")",null)
+ }
+ private fun restoreDrafts(){
+  if(!pageReady)return
+  val value=try{String(draftFile.readFully(),Charsets.UTF_8)}catch(_:java.io.FileNotFoundException){null}catch(_:Exception){toast("Не удалось прочитать резервный черновик. Локальные данные сохранены.");return}
+  web.evaluateJavascript("window.TrainingAndroidApp && window.TrainingAndroidApp.restoreDrafts("+(value?.let{JSONObject.quote(it)}?:"null")+")",null)
+ }
+ override fun onPause(){
+  if(::web.isInitialized&&pageReady)web.evaluateJavascript("window.flushTrainingDraft && window.flushTrainingDraft()",null)
+  super.onPause()
  }
  override fun onResume(){
   super.onResume()
