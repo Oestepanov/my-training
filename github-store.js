@@ -4,13 +4,45 @@
  const FORMAT='my-training-encrypted-v1', STORAGE='my-training-github-v1';
  const REPO='Oestepanov/my-training', BRANCH='training-data', FILE='diary.enc.json';
  const clone=x=>JSON.parse(JSON.stringify(x));
+ const catalog=[
+  {id:'bench-press',name:'Жим штанги лёжа',muscles:'Грудь · трицепс · передние дельты',description:'Горизонтальный жим штанги на скамье.',hint:'Общий вес штанги вместе с грифом.'},
+  {id:'leg-press',name:'Жим ногами',muscles:'Квадрицепс · ягодицы',description:'Разгибание ног в тренажёре с платформой.',hint:'Указывай вес на тренажёре одинаковым способом каждый раз.'},
+  {id:'seated-hammer-curl',name:'Молотки сидя',muscles:'Бицепс · плечевая мышца · предплечья',description:'Сгибание рук с гантелями нейтральным хватом сидя.',hint:'Вес одной гантели.'},
+  {id:'lying-leg-curl',name:'Сгибание ног лёжа',muscles:'Задняя поверхность бедра',description:'Сгибание ног лёжа в тренажёре.'},
+  {id:'barbell-wrist-curl',name:'Сгибание кистей со штангой',muscles:'Сгибатели предплечья',description:'Сгибание кистей со штангой с опорой для предплечий.'},
+  {id:'incline-bench-press',name:'Жим штанги на наклонной',muscles:'Верх груди · трицепс · передние дельты',description:'Жим штанги на наклонной скамье.',hint:'Общий вес штанги вместе с грифом.'},
+  {id:'lat-pulldown',name:'Вертикальная тяга',muscles:'Широчайшие мышцы спины · бицепс',description:'Тяга верхнего блока к груди.'},
+  {id:'lateral-raise',name:'Махи в стороны',muscles:'Средние дельты',description:'Подъём гантелей через стороны.',hint:'Вес одной гантели.'},
+  {id:'reverse-pec-deck',name:'Обратная бабочка',muscles:'Задние дельты · верх спины',description:'Разведение рук в тренажёре «Бабочка» лицом к спинке.'},
+  {id:'assisted-pull-up',name:'Гравитрон (помощь)',muscles:'Грудь / спина · руки — по варианту',description:'Упражнение в гравитроне с противовесом. Группы мышц зависят от варианта: подтягивания или отжимания.',hint:'Записывай вес помощи: меньше помощи — выше нагрузка.'},
+  {id:'dumbbell-curl',name:'Сгибание рук с гантелями',muscles:'Бицепс · плечевая мышца',description:'Сгибание рук с гантелями на бицепс.',hint:'Вес одной гантели.'},
+  {id:'pec-deck',name:'Бабочка',muscles:'Грудные мышцы',description:'Сведение рук перед собой в тренажёре «Бабочка».'},
+  {id:'triceps-pushdown',name:'Разгибание рук на блоке',muscles:'Трицепс',description:'Разгибание рук вниз на верхнем блоке.'},
+  {id:'pullover',name:'Пуловер',muscles:'Грудь · широчайшие мышцы спины',description:'Опускание и подъём гантели за голову лёжа на скамье.',hint:'Вес одной гантели.'}
+ ];
+ const catalogById=new Map(catalog.map(e=>[e.id,e]));
+ const normalizeName=s=>String(s||'').toLocaleLowerCase('ru-RU').replace(/ё/g,'е').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+ const catalogByName=new Map(catalog.map(e=>[normalizeName(e.name),e]));
+ for(const [alias,id] of [['Пулловер','pullover'],['Гравитрон','assisted-pull-up'],['Жим штанги на наклонной скамье','incline-bench-press']])catalogByName.set(normalizeName(alias),catalogById.get(id));
+ function exerciseInfo(exercise){
+  if(typeof exercise==='string')return catalogById.get(exercise)||null;
+  return catalogById.get(exercise.id||exercise.exerciseId)||catalogByName.get(normalizeName(exercise.name))||null;
+ }
+ function exerciseKey(exercise){return exerciseInfo(exercise)?.id||(typeof exercise==='string'?exercise:exercise.id||exercise.exerciseId);}
+ function normalizeExercises(items){
+  const ids=new Set();return items.map(e=>{const known=exerciseInfo(e);return known?{id:known.id,name:known.name}:clone(e);}).filter(e=>{if(ids.has(e.id))return false;ids.add(e.id);return true;});
+ }
+ function normalizePrograms(doc){
+  for(const w of doc.workouts){w.exercises=normalizeExercises(w.exercises);if(w.archivedExercises)w.archivedExercises=normalizeExercises(w.archivedExercises).filter(e=>!w.exercises.some(x=>x.id===e.id));}
+  return doc;
+ }
  const sameExercises=(a,b)=>JSON.stringify(a.map(e=>({id:e.id,name:e.name})))===JSON.stringify(b.map(e=>({id:e.id,name:e.name})));
  function validateExercises(items){
-  if(!Array.isArray(items)||items.length<1||items.length>40)throw new Error('В тренировке должно быть от 1 до 40 упражнений.');
+  if(!Array.isArray(items)||items.length<1||items.length>catalog.length)throw new Error('Выбери хотя бы одно упражнение из списка.');
   const ids=new Set();return items.map(e=>{
-   const name=String(e.name||'').trim();
-   if(typeof e.id!=='string'||!/^[-a-zA-Z0-9]{1,100}$/.test(e.id)||ids.has(e.id)||!name||name.length>120)throw new Error('Укажи название каждого упражнения: до 120 символов.');
-   ids.add(e.id);return {id:e.id,name};
+   const known=catalogById.get(e.id);
+   if(!known||ids.has(e.id)||(e.name!=null&&e.name!==known.name))throw new Error('Выбирай упражнения из списка. Одно упражнение можно добавить в тренировку один раз.');
+   ids.add(e.id);return {id:known.id,name:known.name};
   });
  }
  function applyProgram(workout,exercises){
@@ -53,7 +85,8 @@
   }
   load(){
    let saved;try{saved=JSON.parse(this.storage.getItem(STORAGE)||'null');}catch{throw new Error('Не удалось прочитать память браузера. Сохранённые данные не заменены.');}
-   this.settings=saved?.settings||null;this.doc=saved?.doc?validateDoc(saved.doc):empty(this.workouts);this.pending=saved?.pending||[];this.pendingPrograms=saved?.pendingPrograms||[];this.lastSynced=saved?.lastSynced||null;
+   this.settings=saved?.settings||null;this.doc=normalizePrograms(saved?.doc?validateDoc(saved.doc):empty(this.workouts));this.pending=saved?.pending||[];this.pendingPrograms=saved?.pendingPrograms||[];this.lastSynced=saved?.lastSynced||null;
+   for(const op of this.pendingPrograms){op.baseExercises=normalizeExercises(op.baseExercises);op.exercises=normalizeExercises(op.exercises);}
   }
   persist(){
    try{this.storage.setItem(STORAGE,JSON.stringify({settings:this.settings,doc:this.doc,pending:this.pending,pendingPrograms:this.pendingPrograms,lastSynced:this.lastSynced}));}
@@ -76,7 +109,9 @@
    const value=await this.api('/contents/'+FILE+'?ref='+BRANCH);
    if(value.encoding!=='base64'||!value.content||!value.sha)throw new Error('GitHub вернул неполный файл. Локальные записи сохранены.');
    const raw=new TextDecoder().decode(from64(value.content.replace(/\s/g,'')));
-   return {sha:value.sha,doc:await decrypt(JSON.parse(raw),this.settings.key,this.crypto)};
+   const doc=await decrypt(JSON.parse(raw),this.settings.key,this.crypto),before=JSON.stringify(doc.workouts);
+   normalizePrograms(doc);
+   return {sha:value.sha,doc,programUpgrade:before!==JSON.stringify(doc.workouts)};
   }
   async connect(input){return this.run(async()=>{
    let token=String(input.token||'').trim(),key=String(input.key||'').replace(/\s/g,'');
@@ -127,7 +162,7 @@
       this.doc=visible;this.persist();this.status={kind:'conflict',message:'На двух устройствах изменены одни данные. Выбери версию в настройках синхронизации.'};return this.data();
      }
      const toWrite=[...operations,...programs].filter(o=>!merged.acknowledged.includes(o.opId));
-     if(toWrite.length){
+     if(toWrite.length||remote.programUpgrade){
       const envelope=await encrypt(merged.doc,this.settings.key,this.crypto);
       try{await this.api('/contents/'+FILE,{method:'PUT',body:JSON.stringify({message:'Sync training diary',branch:BRANCH,sha:remote.sha,content:bytesTo64(new TextEncoder().encode(JSON.stringify(envelope)))})});}
       catch(e){if(e.status===409||e.status===422){if(attempt<2)continue;}throw e;}
@@ -201,6 +236,6 @@
    this.doc=this.replay(remote.doc,this.pending).doc;this.persist();return this.syncUnlocked();
   });}
  }
- root.TrainingGitHub={GitHubStore,encrypt,decrypt,validateDoc,bytesTo64,from64};
+ root.TrainingGitHub={GitHubStore,encrypt,decrypt,validateDoc,bytesTo64,from64,catalog,exerciseInfo,exerciseKey};
  if(typeof module!=='undefined')module.exports=root.TrainingGitHub;
 })(globalThis);
