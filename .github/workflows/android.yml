@@ -21,7 +21,7 @@ jobs:
           gradle-version: '8.9'
       - name: Build Android packages
         run: |
-          node --test program-sync.test.cjs training-drafts.test.cjs
+          node --test program-sync.test.cjs training-drafts.test.cjs workout-options.test.cjs
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
           gradle -p android :app:assembleRelease :app:assembleDebugAndroidTest
       - name: Package unsigned APK and signing tool
@@ -49,6 +49,9 @@ jobs:
           script: |
             gradle -p android :app:connectedDebugAndroidTest
             adb pull /data/local/tmp/program-editor.png android/app/build/reports/androidTests/program-editor.png
+            adb pull /data/local/tmp/design-home.png android/app/build/reports/androidTests/design-home.png
+            adb pull /data/local/tmp/design-exercise.png android/app/build/reports/androidTests/design-exercise.png
+            adb pull /data/local/tmp/design-settings.png android/app/build/reports/androidTests/design-settings.png
       - name: Keep test results
         if: always()
         uses: actions/upload-artifact@v4

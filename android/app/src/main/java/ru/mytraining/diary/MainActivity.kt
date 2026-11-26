@@ -32,8 +32,8 @@ class MainActivity:Activity(){
  private val draftFile get()=AtomicFile(File(filesDir,"training-drafts-v3.json"))
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
-  window.statusBarColor=Color.rgb(17,20,17);window.navigationBarColor=Color.rgb(17,20,17)
-  val root=FrameLayout(this).apply{setBackgroundColor(Color.rgb(17,20,17))}
+  window.statusBarColor=Color.rgb(16,22,16);window.navigationBarColor=Color.rgb(16,22,16)
+  val root=FrameLayout(this).apply{setBackgroundColor(Color.rgb(16,22,16))}
   root.setOnApplyWindowInsetsListener{view,insets->
    if(Build.VERSION.SDK_INT>=30){
     val bars=insets.getInsets(WindowInsets.Type.systemBars());val ime=insets.getInsets(WindowInsets.Type.ime())
@@ -47,7 +47,7 @@ class MainActivity:Activity(){
   }
   WebView.setWebContentsDebuggingEnabled(false)
   web=WebView(this).apply{
-   tag="training-webview";setBackgroundColor(Color.rgb(17,20,17))
+   tag="training-webview";setBackgroundColor(Color.rgb(16,22,16))
    settings.javaScriptEnabled=true;settings.domStorageEnabled=true;settings.databaseEnabled=true
    settings.allowFileAccess=false;settings.allowContentAccess=false
    settings.allowFileAccessFromFileURLs=false;settings.allowUniversalAccessFromFileURLs=false

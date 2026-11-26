@@ -151,8 +151,7 @@ class SmokeTest{
   waitForJavascript("!document.querySelector('#programDialog').open")
   assertEquals("true",evaluate("state.workouts[0].exercises.length===window.programOriginal.length-1 && state.workouts[0].exercises[0].id==='pullover' && state.workouts[0].archivedExercises.some(e=>e.id===window.programOriginal[0].id)"))
   assertEquals("true",evaluate("document.querySelectorAll('#exerciseList .exercise').length===window.programOriginal.length && document.querySelector('#exerciseList h3').textContent===window.programOriginal[0].name"))
-  evaluate("renderProgress();true")
-  assertEquals("true",evaluate("document.querySelectorAll('#exerciseSelect option[value=pullover]').length===1 && [...document.querySelectorAll('#exerciseSelect option')].some(e=>e.value===window.programOriginal[0].id)"))
+  assertEquals("true",evaluate("!document.querySelector('#progressView') && !!document.querySelector('#settingsView')"))
   evaluate("window.programRemoteOk=false;TrainingGitHub.decrypt(window.programEnvelope,githubStore.settings.key).then(d=>window.programRemoteOk=d.workouts[0].exercises[0].id==='pullover'&&d.workouts[1].exercises.at(-1).id==='pullover'&&d.entries[0].exercises[0].name===window.programOriginal[0].name);true")
   waitForJavascript("window.programRemoteOk")
   evaluate("const legacy={id:'legacy-pull',version:1,workoutId:'2',date:today(),exercises:[{exerciseId:'ex-old-random',name:'Пулловер',completed:false,sets:0,setDetails:Array.from({length:3},()=>({weight:0,reps:12,done:false}))}]};state.history.unshift(legacy);workoutId='2';editId=legacy.id;renderWorkout(legacy);true")
@@ -184,7 +183,7 @@ class SmokeTest{
   ready();waitForJavascript("window.TrainingAndroidApp.draftsReady===true")
   try{
    evaluate("drafts.clearAll();dirty=false;editId=null;editVersion=null;editHistory=false;const original=structuredClone(state.workouts.find(w=>w.id==='3'));window.removedSource={id:'today-active',version:1,workoutId:'3',date:today(),exercises:original.exercises.map(e=>({exerciseId:e.id,name:e.name,completed:e.id==='pullover',sets:e.id==='pullover'?3:0,setDetails:Array.from({length:3},()=>({weight:e.id==='pullover'?8:0,reps:e.id==='pullover'?10:12,done:e.id==='pullover'}))}))};state.workouts.find(w=>w.id==='3').exercises=original.exercises.filter(e=>e.id!=='pullover');state.history=[structuredClone(window.removedSource)];workoutId='3';renderWorkout();true")
-   assertEquals("true",evaluate("!document.querySelector('#exerciseList [data-exercise=pullover]') && document.querySelectorAll('#exerciseList .exercise').length===4 && document.querySelector('#totalCount').textContent==='/ 12'"))
+   assertEquals("true",evaluate("!document.querySelector('#exerciseList [data-exercise=pullover]') && document.querySelectorAll('#exerciseList .exercise').length===4 && !document.querySelector('#totalCount')"))
    assertEquals("true",evaluate("collect().exercises.find(e=>e.exerciseId==='pullover').setDetails.every(s=>s.done && s.weight===8 && s.reps===10) && state.history[0].exercises.some(e=>e.exerciseId==='pullover')"))
    evaluate("state.editable=true;updateAccess();const input=document.querySelector('#exerciseList .weight');input.value='25';input.dispatchEvent(new Event('input',{bubbles:true}));renderWorkoutForState();true")
    assertEquals("true",evaluate("!document.querySelector('#exerciseList [data-exercise=pullover]') && document.querySelector('#exerciseList .weight').value==='25' && drafts.active().session.exercises.some(e=>e.exerciseId==='pullover')"))
@@ -192,6 +191,36 @@ class SmokeTest{
    // Explicit history editing retains the actual exercises performed that day.
    assertEquals("true",evaluate("!!document.querySelector('#exerciseList [data-exercise=pullover]') && document.querySelectorAll('#exerciseList .exercise').length===5"))
   }finally{evaluate("drafts.clearAll();dirty=false;editId=null;editVersion=null;editHistory=false;true")}
+ }
+
+ private fun captureDesign(name:String){
+  val drawn=CountDownLatch(1)
+  activity.runOnUiThread{web().postVisualStateCallback(1,object:WebView.VisualStateCallback(){override fun onComplete(requestId:Long){drawn.countDown()}})}
+  assertTrue("Screen did not draw",drawn.await(15,TimeUnit.SECONDS))
+  SystemClock.sleep(500)
+  android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("screencap -p /data/local/tmp/"+name+".png")).use{it.readBytes()}
+ }
+ @Test fun testGreenDesignSimpleThreeSetsAndAdvancedSettings(){
+  ready();waitForJavascript("window.TrainingAndroidApp.draftsReady===true")
+  try{
+   evaluate("drafts.clearAll();dirty=false;editId=null;editVersion=null;editHistory=false;uiOptions=WorkoutOptions.write({showSets:false,defaultSets:3});renderOptions();state.editable=true;state.workouts.find(w=>w.id==='2').exercises.push({id:'pullover',name:'Пуловер'});state.history=[{id:'sample-earlier',version:1,date:'2026-11-24',workoutId:'2',exercises:[{exerciseId:'incline-bench-press',name:'Жим штанги на наклонной',completed:true,sets:3,weight:40,reps:12,setDetails:Array.from({length:3},()=>({weight:40,reps:12,done:true}))}]},{id:'sample-pull',version:1,date:'2026-11-25',workoutId:'3',exercises:[{exerciseId:'pullover',name:'Пуловер',completed:true,sets:3,weight:8,reps:10,setDetails:Array.from({length:3},()=>({weight:8,reps:10,done:true}))}]}];switchWorkout('2');showView('workout');window.focusNetCalls=0;githubStore.api=async()=>{window.focusNetCalls++;throw Error('No network expected')};true")
+   assertEquals("true",evaluate("!document.querySelector('[data-view=progress]') && !!document.querySelector('[data-view=settings]') && !document.body.classList.contains('show-sets')"))
+   assertEquals("true",evaluate("[...document.querySelectorAll('#exerciseList .exercise')].every(c=>c.querySelectorAll('.set-row').length===3) && getComputedStyle(document.querySelector('.advanced-set-fields')).display==='none'"))
+   evaluate("document.querySelector('#exerciseList .exercise-check').click();window.scrollTo({top:0,behavior:'instant'});true")
+   assertEquals("true",evaluate("collect().exercises[0].setDetails.every(s=>s.done) && collect().exercises[0].setDetails.length===3 && window.focusNetCalls===0"))
+   captureDesign("design-home")
+   evaluate("document.querySelectorAll('#exerciseList .exercise')[1].open=true;document.querySelectorAll('#exerciseList .exercise')[1].scrollIntoView({behavior:'instant',block:'start'});true")
+   captureDesign("design-exercise")
+   evaluate("const card=document.querySelectorAll('#exerciseList .exercise')[1];const w=card.querySelector('.bulk-weight'),r=card.querySelector('.bulk-reps');w.value='50';w.dispatchEvent(new Event('input',{bubbles:true}));r.value='15';r.dispatchEvent(new Event('input',{bubbles:true}));card.querySelector('.exercise-done').click();true")
+   assertEquals("true",evaluate("collect().exercises[1].setDetails.length===3 && collect().exercises[1].setDetails.every(s=>s.weight===50 && s.reps===15 && s.done)"))
+   evaluate("document.querySelector('[data-view=settings]').click();document.querySelector('#showSetControls').click();document.querySelector('#defaultSetCount').value='4';document.querySelector('#defaultSetCount').dispatchEvent(new Event('change'));window.scrollTo({top:0,behavior:'instant'});true")
+   assertEquals("true",evaluate("!document.querySelector('#settingsView').hidden && document.body.classList.contains('show-sets') && !document.querySelector('#defaultSetsSection').hidden && collect().exercises[1].setDetails.length===3 && WorkoutOptions.read().defaultSets===4"))
+   captureDesign("design-settings")
+   evaluate("drafts.clearAll();dirty=false;editId=null;editVersion=null;editHistory=false;switchWorkout('1');true")
+   assertEquals("true",evaluate("document.querySelectorAll('#exerciseList .exercise:first-child .set-row').length===4"))
+   evaluate("document.querySelector('#showSetControls').click();switchWorkout('2');true")
+   assertEquals("true",evaluate("!document.body.classList.contains('show-sets') && document.querySelectorAll('#exerciseList .exercise:first-child .set-row').length===3 && window.focusNetCalls===0"))
+  }finally{evaluate("drafts.clearAll();dirty=false;editId=null;editVersion=null;editHistory=false;uiOptions=WorkoutOptions.write({showSets:false,defaultSets:3});renderOptions();true")}
  }
 
 }
