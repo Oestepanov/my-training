@@ -139,8 +139,7 @@ class SmokeTest{
   evaluate("document.querySelector('#editProgram').click();const first=document.querySelector('#programRows input');first.value='Жим штанги тест';first.dispatchEvent(new Event('input'));document.querySelector('#addExercise').click();const last=document.querySelector('#programRows').lastElementChild.querySelector('input');last.value='Новое упражнение';last.dispatchEvent(new Event('input'));true")
   assertEquals("true",evaluate("document.querySelector('#programDialog').open"))
   SystemClock.sleep(250)
-  val screenshot=instrumentation.uiAutomation.takeScreenshot()
-  if(screenshot!=null){File(activity.getExternalFilesDir(null),"program-editor.png").outputStream().use{screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};screenshot.recycle()}
+  android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("screencap -p /data/local/tmp/program-editor.png")).use{it.readBytes()}
   evaluate("document.querySelector('#programForm').requestSubmit();true")
   waitForJavascript("!document.querySelector('#programDialog').open")
   assertEquals("true",evaluate("state.workouts[0].exercises.length===window.programOriginal.length+1 && state.workouts[0].exercises[0].name==='Жим штанги тест'"))
