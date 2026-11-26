@@ -40,3 +40,5 @@
 @media(max-width:650px){.program-heading-actions{gap:0;align-items:flex-end;flex-direction:column}.program-dialog{width:calc(100vw - 24px);max-height:calc(100dvh - 24px);padding:28px 18px}.program-footer{gap:8px}.program-footer .button{padding:12px 8px}.program-dialog h2{font-size:25px}}
 
 .program-muscles{margin:12px 0 6px;color:var(--lime);font-size:14px;line-height:1.5}.program-dialog .program-description{margin:6px 0;font-size:14px}.program-previous{margin:10px 0;color:var(--text);font-size:14px;line-height:1.6}.exercise-description{margin:6px 0 0;font-size:14px;line-height:1.5}
+
+.draft-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;margin:0 0 24px;border:1px solid #4e5d43;border-radius:12px;background:var(--panel);font-size:14px;line-height:1.5}.draft-banner[hidden]{display:none}.draft-banner button{font-size:14px;min-height:44px;flex-shrink:0}.draft-banner.draft-error{color:#ffb2a8;border-color:#a15f54}@media(max-width:650px){.draft-banner{align-items:flex-start;flex-direction:column;gap:4px}.draft-banner button{align-self:flex-end}}
