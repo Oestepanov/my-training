@@ -65,4 +65,52 @@ class SmokeTest{
    assertTrue("System picker was not opened",monitor.hits>0)
   }finally{instrumentation.removeMonitor(monitor);target.delete();evaluate("state.history=[]")}
  }
+ @Test fun testEncryptedOfflineQueueAndReconnect(){
+  ready()
+  evaluate("""
+   window.offlineSmoke='running';
+   (async()=>{
+    const T=TrainingGitHub, key=T.bytesTo64(crypto.getRandomValues(new Uint8Array(32)));
+    let remote=await T.encrypt({schemaVersion:3,workouts:state.workouts,entries:[]},key), online=true;
+    const memory=new Map(), storage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+    const fetch=async(url,options)=>{
+     if(!online)throw Error('offline');
+     if(options.method==='PUT')remote=JSON.parse(new TextDecoder().decode(T.from64(JSON.parse(options.body).content)));
+     return {ok:true,json:async()=>options.method==='PUT'?{}:{encoding:'base64',sha:'mock',content:T.bytesTo64(new TextEncoder().encode(JSON.stringify(remote)))}};
+    };
+    const make=()=>new T.GitHubStore({storage,fetch,workouts:state.workouts,lock:f=>f()});
+    let s=make();await s.connect({token:'ghp_'+('a'.repeat(36)),key});online=false;
+    const workout=s.data().workouts[0];
+    await s.mutate('save',{id:'isolated-offline-test',date:'2026-11-25',workoutId:workout.id,exercises:workout.exercises.map(e=>({exerciseId:e.id,setDetails:[{weight:10,reps:12,done:true}]}))});
+    s=make();if(s.pending.length!==1||s.data().history.length!==1)throw Error('Offline queue was lost');
+    online=true;await s.sync();
+    const restored=await T.decrypt(remote,key);
+    if(s.pending.length||restored.entries.length!==1||restored.entries[0].id!=='isolated-offline-test')throw Error('Reconnect lost or duplicated a session');
+    window.offlineSmoke='ok';
+   })().catch(e=>window.offlineSmoke=String(e));true
+  """.trimIndent())
+  val until=SystemClock.elapsedRealtime()+15000
+  while(SystemClock.elapsedRealtime()<until&&evaluate("window.offlineSmoke")=="\"running\"")SystemClock.sleep(100)
+  assertEquals("\"ok\"",evaluate("window.offlineSmoke"))
+ }
+ @Test fun testNativeRestAlarmAndPause(){
+  ready()
+  for(command in listOf("pm grant ru.mytraining.diary android.permission.POST_NOTIFICATIONS","appops set ru.mytraining.diary SCHEDULE_EXACT_ALARM allow")){
+   android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use{it.readBytes()}
+  }
+  evaluate("timerRemaining=120;document.querySelector('#timerButton').click();true")
+  instrumentation.waitForIdleSync()
+  assertTrue("Native alarm was not scheduled",RestAlarm.deadline(activity)>System.currentTimeMillis())
+  evaluate("document.querySelector('#timerButton').click();true")
+  instrumentation.waitForIdleSync()
+  assertEquals(0L,RestAlarm.deadline(activity))
+  evaluate("timerRemaining=1;document.querySelector('#timerButton').click();true")
+  val until=SystemClock.elapsedRealtime()+10000
+  val manager=activity.getSystemService(android.app.NotificationManager::class.java)
+  while(SystemClock.elapsedRealtime()<until&&manager.activeNotifications.none{it.id==41})SystemClock.sleep(100)
+  assertTrue("Rest completion notification was not delivered",manager.activeNotifications.any{it.id==41})
+  assertEquals(0L,RestAlarm.deadline(activity))
+  manager.cancel(41)
+  evaluate("document.querySelector('#timerReset').click();true")
+ }
 }
