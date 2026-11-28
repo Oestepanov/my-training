@@ -129,7 +129,7 @@ function updateAccess(){
  $('#saveButton').textContent=editId&&editHistory?'Сохранить изменения':'Сохранить тренировку';
  $('#saveButton').disabled=!state.editable||savingSession;
  if($('#editProgram'))$('#editProgram').disabled=!state.editable||savingSession;
- $('#saveHint').textContent=state.editable?'Изменения сразу сохраняются на телефоне. На GitHub — только после нажатия «Сохранить тренировку».':'Подключи GitHub, чтобы загрузить историю и сохранять результаты.';
+ $('#saveHint').textContent=state.editable?(editHistory?'Проверь упражнения и результаты, затем нажми «Сохранить изменения».':'Изменения сразу сохраняются на телефоне. На GitHub — только после нажатия «Сохранить тренировку».'):'Подключи GitHub, чтобы загрузить историю и сохранять результаты.';
  $$('#exerciseList input, #exerciseList button, #sessionDate, #notes').forEach(e=>e.disabled=!state.editable||savingSession);
  $('#continueWorkout').disabled=savingSession;renderOptions();renderSyncStatus();
 }
@@ -193,6 +193,8 @@ function renderWorkout(session,localOverride,modeOverride){
   if(session){editId=session.id;editVersion=session.version;}
  }
  const draft=session,historyView=editHistory&&!!editId;
+ $('#sessionHeading').textContent=historyView?'Редактирование':'Сегодня';
+ $('#editProgram').textContent=historyView?'Изменить упражнения':'Изменить';
  const exerciseList=historyView?draft.exercises.map(e=>({id:e.exerciseId,name:e.name})):workout.exercises;
  retainedExercises=!historyView&&draft?(draft.exercises||[]).filter(e=>!workout.exercises.some(x=>TrainingGitHub.exerciseKey(x)===TrainingGitHub.exerciseKey(e))):[];
  draftId=draft?.id||crypto.randomUUID();$('#sessionDate').value=draft?draft.date:today();$('#notes').value=draft?.notes||'';
@@ -400,3 +402,4 @@ $('#continueWorkout').onclick=()=>{
 $('#showSetControls').onchange=()=>{if(dirty)persist();saveOptions({...uiOptions,showSets:$('#showSetControls').checked});};
 $('#defaultSetCount').onchange=()=>{const field=$('#defaultSetCount');if(!field.checkValidity()||!field.value){field.reportValidity();return;}saveOptions({...uiOptions,defaultSets:Number(field.value)});if(!dirty&&!editId)renderWorkout();};
 renderOptions();
+

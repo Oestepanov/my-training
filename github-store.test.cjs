@@ -95,3 +95,28 @@ test('local storage failure never confirms or transmits the proposed result',asy
  st.setItem=()=>{throw new Error('quota');};const count=s.requests.length;
  await assert.rejects(a.mutate('save',session('one')),/Память/);assert.equal(s.requests.length,count);assert.equal(a.data().history.length,0);
 });
+
+test('a saved session can replace, add and remove catalog exercises while preserving the program and other sessions',async()=>{
+ const s=await server(),a=device(s),b=device(s);await connect(a);
+ await a.mutate('save',session('older'));
+ await a.mutate('save',session('corrected'));
+ await connect(b);
+ const originalWorkouts=structuredClone(a.data().workouts);
+ const corrected=a.data().history.find(e=>e.id==='corrected');
+ s.online(false);
+ await a.mutate('save',{...corrected,exercises:[
+  {exerciseId:'machine-chest-press',name:'ignored user label',setDetails:[{weight:20,reps:15,done:true}]},
+  {exerciseId:'seated-cable-row',setDetails:[{weight:35,reps:12,done:true}]}
+ ]});
+ assert.equal(a.pending.length,1);
+ s.online(true);await a.sync();await b.sync();
+ const history=b.data().history,edited=history.find(e=>e.id==='corrected');
+ assert.equal(edited.version,corrected.version+1);
+ assert.deepEqual(edited.exercises.map(e=>e.exerciseId),['machine-chest-press','seated-cable-row']);
+ assert.equal(edited.exercises[0].name,'Жим от груди в тренажёре');
+ assert.equal(edited.exercises[0].weight,20);
+ assert.equal(history.find(e=>e.id==='older').exercises[0].exerciseId,'bench');
+ assert.deepEqual(b.data().workouts,originalWorkouts);
+ await assert.rejects(a.mutate('save',{...edited,exercises:[{exerciseId:'unknown-exercise',setDetails:[{weight:20,reps:15,done:true}]}]}),/Список упражнений/);
+});
+

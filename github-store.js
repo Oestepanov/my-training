@@ -18,6 +18,7 @@
   {id:'assisted-pull-up',name:'Гравитрон (помощь)',muscles:'Грудь / спина · руки — по варианту',description:'Упражнение в гравитроне с противовесом. Группы мышц зависят от варианта: подтягивания или отжимания.',hint:'Записывай вес помощи: меньше помощи — выше нагрузка.'},
   {id:'dumbbell-curl',name:'Сгибание рук с гантелями',muscles:'Бицепс · плечевая мышца',description:'Сгибание рук с гантелями на бицепс.',hint:'Вес одной гантели.'},
   {id:'pec-deck',name:'Бабочка',muscles:'Грудные мышцы',description:'Сведение рук перед собой в тренажёре «Бабочка».'},
+  {id:'machine-chest-press',name:'Жим от груди в тренажёре',muscles:'Грудь · трицепс · передние дельты',description:'Жим рукояток вперёд от груди сидя с опорой спины.'},
   {id:'triceps-pushdown',name:'Разгибание рук на блоке',muscles:'Трицепс',description:'Разгибание рук вниз на верхнем блоке.'},
   {id:'pullover',name:'Пуловер',muscles:'Грудь · широчайшие мышцы спины',description:'Опускание и подъём гантели за голову лёжа на скамье.',hint:'Вес одной гантели.'}
  ];
@@ -177,7 +178,7 @@
    if(!workout||!/^\d{4}-\d{2}-\d{2}$/.test(value.date)||!Number.isFinite(Date.parse(value.date))||new Date(value.date).toISOString().slice(0,10)!==value.date)throw new Error('Проверь дату и номер тренировки.');
    const current=this.doc.entries.find(e=>e.id===value.id);
    if(current&&current.workoutId!==workout.id)throw new Error('Нельзя изменить номер сохранённой тренировки.');
-   const known=[...(current?current.exercises.map(e=>({id:e.exerciseId,name:e.name})):[]),...workout.exercises,...(workout.archivedExercises||[])];
+   const known=[...(current?current.exercises.map(e=>({id:e.exerciseId,name:e.name})):[]),...workout.exercises,...(workout.archivedExercises||[]),...catalog];
    if(typeof value.id!=='string'||!/^[-a-zA-Z0-9]{1,100}$/.test(value.id)||!Array.isArray(value.exercises)||!value.exercises.length||value.exercises.length>200)throw new Error('Неверная запись тренировки.');
    const ids=new Set();const exercises=value.exercises.map(item=>{
     const ex=known.find(e=>e.id===item.exerciseId);
@@ -240,3 +241,4 @@
  root.TrainingGitHub={GitHubStore,encrypt,decrypt,validateDoc,bytesTo64,from64,catalog,exerciseInfo,exerciseKey};
  if(typeof module!=='undefined')module.exports=root.TrainingGitHub;
 })(globalThis);
+

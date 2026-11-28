@@ -1,9 +1,9 @@
 'use strict';
-let programDraft=null,programBase=null,programWorkoutId=null,programSaving=false;
+let programDraft=null,programBase=null,programWorkoutId=null,programSaving=false,editingSessionExercises=false;
 function programChanged(){return JSON.stringify(programDraft)!==JSON.stringify(programBase);}
 function closeProgram(){
  if(programSaving)return;
- if(programChanged()&&!confirm('Закрыть редактор без сохранения изменений программы?'))return;
+ if(programChanged()&&!confirm('Закрыть редактор без применения изменений?'))return;
  $('#programDialog').close();
 }
 function renderProgramRows(){
@@ -15,10 +15,13 @@ function renderProgramRows(){
   const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Выбери упражнение';placeholder.disabled=true;select.append(placeholder);
   for(const known of TrainingGitHub.catalog){
    const option=document.createElement('option');option.value=known.id;option.textContent=known.name;
-   option.disabled=programDraft.some((e,i)=>i!==index&&e.id===known.id);select.append(option);
+   option.disabled=programDraft.some((e,i)=>i!==index&&TrainingGitHub.exerciseKey(e)===known.id);select.append(option);
   }
-  select.value=TrainingGitHub.exerciseInfo(exercise)?.id||'';
-  select.onchange=()=>{const known=TrainingGitHub.exerciseInfo(select.value);programDraft[index]={id:known.id,name:known.name};renderProgramRows();$('#programRows').children[index].querySelector('select').focus();};
+  if(exercise.id&&!TrainingGitHub.catalog.some(e=>e.id===exercise.id)){
+   const legacy=document.createElement('option');legacy.value=exercise.id;legacy.textContent=exercise.name;select.append(legacy);
+  }
+  select.value=exercise.id||'';
+  select.onchange=()=>{const known=TrainingGitHub.exerciseInfo(select.value);programDraft[index]={...exercise,id:known.id,name:known.name};renderProgramRows();$('#programRows').children[index].querySelector('select').focus();};
   label.append(select);row.append(label);
   const known=TrainingGitHub.exerciseInfo(exercise);
   if(known){
@@ -37,10 +40,19 @@ function renderProgramRows(){
  $('#addExercise').disabled=programDraft.length>=TrainingGitHub.catalog.length;
 }
 $('#editProgram').onclick=()=>{
+ if(savingSession)return;
  if(!state.editable)return showSync();
  const workout=state.workouts.find(w=>w.id===workoutId);if(!workout)return;
- programWorkoutId=workout.id;programBase=workout.exercises.map(e=>({id:e.id,name:e.name}));programDraft=structuredClone(programBase);
- $('#programTitle').textContent=workout.name;$('#programError').textContent='';renderProgramRows();$('#programDialog').showModal();
+ editingSessionExercises=editHistory&&!!editId;
+ programWorkoutId=workout.id;
+ programBase=editingSessionExercises?collect(true).exercises.map(entry=>({id:entry.exerciseId,name:entry.name,entry})):workout.exercises.map(e=>({id:e.id,name:e.name}));
+ programDraft=structuredClone(programBase);
+ $('#programEyebrow').textContent=editingSessionExercises?'СОХРАНЁННАЯ ТРЕНИРОВКА':'ТВОЯ ПРОГРАММА';
+ $('#programTitle').textContent=editingSessionExercises?'Упражнения в записи от '+date($('#sessionDate').value):workout.name;
+ $('#programHelp').textContent=editingSessionExercises?'Выбери упражнение, которое выполнил. При замене сохранятся введённые вес, повторы и отметки подходов — их можно исправить после применения.':'Выбирай упражнения из общего списка. Последние веса и повторы подтянутся из всех твоих тренировок. У каждого упражнения одна общая история.';
+ $('#programNote').textContent=editingSessionExercises?'После применения проверь результаты и нажми «Сохранить изменения».':'Состав программы обновится на всех устройствах. Уже записанные результаты останутся в истории.';
+ $('#saveProgram').textContent=editingSessionExercises?'Применить':'Сохранить программу';
+ $('#programError').textContent='';renderProgramRows();$('#programDialog').showModal();
 };
 $('#addExercise').onclick=()=>{
  if(programDraft.length>=TrainingGitHub.catalog.length)return;
@@ -52,6 +64,17 @@ $('#programDialog').addEventListener('cancel',event=>{event.preventDefault();clo
 $('#programForm').onsubmit=async event=>{
  event.preventDefault();if(programSaving||!$('#programForm').reportValidity())return;
  const draft=programDraft.map(e=>({id:e.id,name:e.name}));
+ if(editingSessionExercises){
+  try{
+   const session=collect(true);
+   session.exercises=programDraft.map(row=>({exerciseId:row.id,name:row.name,setDetails:row.entry?sets(row.entry):WorkoutOptions.initialRows(latest(row.id),uiOptions)}));
+   drafts.save(session,{editing:true,mode:'history'});
+   renderWorkout(session,drafts.get(session.id),'history');
+   $('#programDialog').close();
+   toast('Проверь вес и повторы, затем нажми «Сохранить изменения».');
+  }catch(error){$('#programError').textContent=error.message;}
+  return;
+ }
  programSaving=true;$('#programError').textContent='';
  $$('#programForm button, #programForm select, #closeProgram').forEach(e=>e.disabled=true);
  try{
@@ -64,3 +87,4 @@ $('#programForm').onsubmit=async event=>{
   if($('#programDialog').open)renderProgramRows();renderSyncStatus();
  }
 };
+
