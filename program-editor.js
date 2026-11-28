@@ -71,6 +71,7 @@ $('#editProgram').onclick=()=>{
  $('#programError').textContent='';renderProgramRows();$('#programDialog').showModal();
 };
 $('#exerciseSearch').oninput=renderProgramRows;
+$('#exerciseSearch').onkeydown=event=>{if(event.key==='Enter')event.preventDefault();};
 $('#exerciseGroup').onchange=renderProgramRows;
 $('#addExercise').onclick=()=>{
  if(programDraft.length>=TrainingGitHub.catalog.length)return;
