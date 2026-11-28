@@ -8,15 +8,25 @@ function closeProgram(){
 }
 function renderProgramRows(){
  const host=$('#programRows');host.replaceChildren();
+ const query=$('#exerciseSearch').value.toLocaleLowerCase('ru-RU').replace(/ё/g,'е').trim();
+ const group=$('#exerciseGroup').value;
+ const available=TrainingGitHub.catalog.filter(e=>(!group||e.group===group)&&[e.name,e.id,e.muscles,e.equipment,...(e.aliases||[])].join(' ').toLocaleLowerCase('ru-RU').replace(/ё/g,'е').includes(query));
+ $('#catalogResults').textContent=available.length?'Найдено упражнений — '+available.length:'По этому запросу упражнений нет';
  programDraft.forEach((exercise,index)=>{
   const row=document.createElement('div');row.className='program-row';row.dataset.programExercise=exercise.id;
   const label=document.createElement('label');label.textContent='Упражнение '+(index+1);
   const select=document.createElement('select');select.required=true;select.setAttribute('aria-label','Выбор упражнения '+(index+1));
   const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Выбери упражнение';placeholder.disabled=true;select.append(placeholder);
-  for(const known of TrainingGitHub.catalog){
+  const choices=TrainingGitHub.catalog.filter(e=>e.id===exercise.id||available.includes(e)).sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+  const sections=new Map();
+  for(const known of choices){
+   if(!sections.has(known.group)){
+    const section=document.createElement('optgroup');section.label=known.group;sections.set(known.group,section);
+   }
    const option=document.createElement('option');option.value=known.id;option.textContent=known.name;
-   option.disabled=programDraft.some((e,i)=>i!==index&&TrainingGitHub.exerciseKey(e)===known.id);select.append(option);
+   option.disabled=programDraft.some((e,i)=>i!==index&&TrainingGitHub.exerciseKey(e)===known.id);sections.get(known.group).append(option);
   }
+  [...sections.entries()].sort(([a],[b])=>a.localeCompare(b,'ru')).forEach(([,section])=>select.append(section));
   if(exercise.id&&!TrainingGitHub.catalog.some(e=>e.id===exercise.id)){
    const legacy=document.createElement('option');legacy.value=exercise.id;legacy.textContent=exercise.name;select.append(legacy);
   }
@@ -27,10 +37,13 @@ function renderProgramRows(){
   if(known){
    const muscles=document.createElement('p');muscles.className='program-muscles';muscles.textContent=known.muscles;
    const description=document.createElement('p');description.className='program-description muted';description.textContent=known.description;
+   const equipment=document.createElement('p');equipment.className='program-description muted';equipment.textContent=known.equipment;
    const previous=document.createElement('p');previous.className='program-previous';
    const result=latest(known.id),performed=result?doneSets(result):[];
    previous.textContent=performed.length?'Последний результат: '+performed.map(s=>number(s.weight)+' кг × '+s.reps).join(' · ')+' — '+date(result.date):'Прошлых результатов пока нет';
-   row.append(muscles,description,previous);
+   row.append(muscles,equipment,description);
+   if(known.backNote){const note=document.createElement('p');note.className='exercise-back-note';note.textContent=known.backNote;row.append(note);}
+   row.append(previous);
   }
   const actions=document.createElement('div');actions.className='program-row-actions';
   const remove=document.createElement('button');remove.type='button';remove.className='text-button danger';remove.textContent='Убрать из тренировки';remove.setAttribute('aria-label','Убрать упражнение '+(index+1));
@@ -47,6 +60,9 @@ $('#editProgram').onclick=()=>{
  programWorkoutId=workout.id;
  programBase=editingSessionExercises?collect(true).exercises.map(entry=>({id:entry.exerciseId,name:entry.name,entry})):workout.exercises.map(e=>({id:e.id,name:e.name}));
  programDraft=structuredClone(programBase);
+ $('#exerciseSearch').value='';
+ $('#exerciseGroup').replaceChildren(new Option('Все группы мышц',''));
+ [...new Set(TrainingGitHub.catalog.map(e=>e.group))].sort((a,b)=>a.localeCompare(b,'ru')).forEach(group=>$('#exerciseGroup').append(new Option(group,group)));
  $('#programEyebrow').textContent=editingSessionExercises?'СОХРАНЁННАЯ ТРЕНИРОВКА':'ТВОЯ ПРОГРАММА';
  $('#programTitle').textContent=editingSessionExercises?'Упражнения в записи от '+date($('#sessionDate').value):workout.name;
  $('#programHelp').textContent=editingSessionExercises?'Выбери упражнение, которое выполнил. При замене сохранятся введённые вес, повторы и отметки подходов — их можно исправить после применения.':'Выбирай упражнения из общего списка. Последние веса и повторы подтянутся из всех твоих тренировок. У каждого упражнения одна общая история.';
@@ -54,6 +70,8 @@ $('#editProgram').onclick=()=>{
  $('#saveProgram').textContent=editingSessionExercises?'Применить':'Сохранить программу';
  $('#programError').textContent='';renderProgramRows();$('#programDialog').showModal();
 };
+$('#exerciseSearch').oninput=renderProgramRows;
+$('#exerciseGroup').onchange=renderProgramRows;
 $('#addExercise').onclick=()=>{
  if(programDraft.length>=TrainingGitHub.catalog.length)return;
  programDraft.push({id:'',name:''});renderProgramRows();
@@ -76,14 +94,14 @@ $('#programForm').onsubmit=async event=>{
   return;
  }
  programSaving=true;$('#programError').textContent='';
- $$('#programForm button, #programForm select, #closeProgram').forEach(e=>e.disabled=true);
+ $$('#programForm button, #programForm select, #programForm input, #closeProgram').forEach(e=>e.disabled=true);
  try{
   const result=await githubStore.saveProgram(programWorkoutId,draft,programBase);
   await refresh();renderWorkoutForState();$('#programDialog').close();
   toast(githubStore.status.kind==='conflict'?'Программа сохранена на устройстве. Выбери версию в синхронизации.':result.synced?'Программа сохранена и синхронизирована.':'Программа сохранена на устройстве. Синхронизируется после восстановления связи.');
  }catch(error){$('#programError').textContent=error.message;}
  finally{
-  programSaving=false;$$('#programForm button, #programForm select, #closeProgram').forEach(e=>e.disabled=false);
+  programSaving=false;$$('#programForm button, #programForm select, #programForm input, #closeProgram').forEach(e=>e.disabled=false);
   if($('#programDialog').open)renderProgramRows();renderSyncStatus();
  }
 };
